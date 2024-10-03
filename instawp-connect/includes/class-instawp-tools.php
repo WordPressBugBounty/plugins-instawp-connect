@@ -313,7 +313,8 @@ include $file_path;';
 		$options      = Helper::get_args_option( 'options', $migrate_settings, array() );
 		$relative_dir = str_replace( ABSPATH, '', WP_CONTENT_DIR );
 		$wp_root_dir  = dirname( $relative_dir );
-
+		// wp-content folder name
+		$relative_dir = basename( $relative_dir );
 		// Check if db.sql should keep or not after migration
 		if ( 'on' === Option::get_option( 'instawp_keep_db_sql_after_migration', 'off' ) ) {
 			$migrate_settings['options'][] = 'keep_db_sql';
@@ -377,6 +378,32 @@ include $file_path;';
 		// Skip object-cache-iwp file if exists forcefully
 		$migrate_settings['excluded_paths'][] = $relative_dir . '/object-cache-iwp.php';
 
+		// Get inventory settings
+		$migrate_settings = InstaWP_Tools::inventory_migration_settings( 
+			$migrate_settings,
+			$options, 
+			$relative_dir,
+			$wp_root_dir
+		);
+
+		if ( in_array( 'skip_media_folder', $options ) ) {
+			$upload_dir      = wp_upload_dir();
+			$upload_base_dir = isset( $upload_dir['basedir'] ) ? $upload_dir['basedir'] : '';
+
+			if ( ! empty( $upload_base_dir ) ) {
+				$migrate_settings['excluded_paths'][] = str_replace( ABSPATH, '', $upload_base_dir );
+			}
+		}
+
+		return apply_filters( 'instawp/filters/process_migration_settings', $migrate_settings );
+	}
+
+	public static function inventory_migration_settings( $migrate_settings, $options, $relative_dir, $wp_root_dir ) {
+
+		if ( ! empty( $migrate_settings['inventory_items'] ) ) {
+			return $migrate_settings;
+		}
+
 		// Get plugins and themes inventory
 		$inventory_items = array();
 		// Get active plugins inventory
@@ -394,11 +421,11 @@ include $file_path;';
 			} else {
 				// Add the plugin to the inventory items
 				$inventory_items[] = array(
-					'slug'		=> $p_slug,
-					'version'	=> $plugin_info['Version'],
-					'type'		=> 'plugin',
-					'path'		=> $p_path,
-					'is_active'	=> $is_active_plugin,
+					'slug'      => $p_slug,
+					'version'   => $plugin_info['Version'],
+					'type'      => 'plugin',
+					'path'      => $p_path,
+					'is_active' => $is_active_plugin,
 				);
 			}
 		}
@@ -415,11 +442,11 @@ include $file_path;';
 			} else {
 				// Add the theme to the inventory items
 				$inventory_items[] = array(
-					'slug'		=> $theme_slug,
-					'version'	=> $theme_info->get('Version'),
-					'type'		=> 'theme',
-					'path'		=> $relative_dir . '/themes/' . $theme_slug,
-					'is_active'	=> $is_active_theme,
+					'slug'      => $theme_slug,
+					'version'   => $theme_info->get('Version'),
+					'type'      => 'theme',
+					'path'      => $relative_dir . '/themes/' . $theme_slug,
+					'is_active' => $is_active_theme,
 				);
 			}
 		}
@@ -453,63 +480,89 @@ include $file_path;';
 						'items' => $inventory_data,
 					)
 				);
+				
 				if ( ! empty( $inventory_data['success'] ) && ! empty( $inventory_data['data'] ) ) {
 					$inventory_data = $inventory_data['data'];
 					// final 
 					if ( empty( $migrate_settings['inventory_items'] ) ) {
 						$migrate_settings['inventory_items'] = array(
-							'token' => $encoded_api_key,
-							'items' => array(),
+							'token'         => $encoded_api_key,
+							'items'         => array(),
 							'with_checksum' => array(),
-							'staging' => $is_staging,
+							'staging'       => $is_staging,
 						);
 					}
 
-					// Absolute path
-					$absolute_path = trailingslashit( ABSPATH );
-
+					$total_inventory_files = 0;
 					foreach ( $inventory_items as $inventory_key => $item ) {
 						// if the item is not a plugin or theme, we need to exclude it
 						if ( empty( $item['slug'] ) || empty( $item['version'] ) || empty( $item['type'] ) || ! in_array( $item['type'], array( 'plugin', 'theme' ), true ) || empty( $item['path'] ) ) {
 							continue;
 						}
 						if ( ! empty( $inventory_data[ $item['type'] ][ $item['slug'] ] ) && ! empty( $inventory_data[ $item['type'] ][ $item['slug'] ][ $item['version'] ]['checksum'] ) ) {
+							// get the absolute path of the item
+							$absolute_path = trailingslashit( ABSPATH ) . '' . $item['path'];
+							// replace double slashes with single slash
+							$absolute_path = str_replace( "//", "/", $absolute_path );
+							// if the absolute path is not a directory, we need to check if the wp_root_dir is a directory
+							if ( ! is_dir( $absolute_path ) && is_dir( $wp_root_dir . DIRECTORY_SEPARATOR . $item['path'] ) ) {
+								$absolute_path = $wp_root_dir . DIRECTORY_SEPARATOR . $item['path'];
+							} 
+							
+							// if the absolute path is not a directory, we need to skip the item
+							if ( ! is_dir( $absolute_path ) ) {
+								error_log("IWP directory not found. Path:" . $absolute_path  );
+								continue;
+							}
+
+							// calculate the checksum of the item
+							$item_data = InstaWP_Tools::calculate_checksum( $absolute_path );
+							if ( empty( $item_data ) || empty( $item_data['checksum'] ) ) {
+								error_log( __( 'Failed to calculate checksum of item ' . $absolute_path , 'instawp-connect' ) );
+								continue;
+							}
 							// if the checksum is the same as the one in the inventory, we need to exclude the path
-							if ( $inventory_data[ $item['type'] ][ $item['slug'] ][ $item['version'] ]['checksum'] === InstaWP_Tools::calculate_checksum( $absolute_path . '' . $item['path'] ) ) {
+							if ( $inventory_data[ $item['type'] ][ $item['slug'] ][ $item['version'] ]['checksum'] === $item_data['checksum'] ) {
 								// if the checksum is the same as the one in the inventory, we need to exclude the path
 								$migrate_settings['excluded_paths'][] = $item['path'];
-								unset($item['path']);
+								$item['absolute_path'] = $absolute_path;
+								$item['file_count'] = $item_data['file_count'];
+								$total_inventory_files += intval( $item['file_count'] );
+								$item['size'] = $item_data['size'];
+								
 								// add the checksum to the item
 								$item['checksum'] = sanitize_text_field( $inventory_data[ $item['type'] ][ $item['slug'] ][ $item['version'] ]['checksum'] );
 								// add the item to the inventory items
 								$migrate_settings['inventory_items']['with_checksum'][] = $item;
 
-								// unset the checksum from the item
-								unset($item['checksum']);
-								unset($item['is_active']);
 								// add the item to the inventory items
-								$migrate_settings['inventory_items']['items'][] = $item;
+								$migrate_settings['inventory_items']['items'][] = array(
+									'slug'    => $item['slug'],
+									'version' => $item['version'],
+									'type'    => $item['type'],
+								);
 								
 							}
 						}
 					}
+
+					if ( 0 < $total_inventory_files && ! empty( $migrate_settings['inventory_items'] ) ) {
+						$migrate_settings['inventory_items']['total_files'] = $total_inventory_files;
+					}
 					
+					
+				} else {
+					if ( empty( $inventory_data ) || ! is_array( $inventory_data ) ) {
+						$inventory_data = array();
+					}
+					error_log("Inventory fetch error. Response:" . json_encode( $inventory_data ) );
 				}
 			}
-		} catch (\Exception $e) {
+		} catch ( \Exception $e ) {
 			error_log( 'Error in processing migration settings inventory items: ' . $e->getMessage() );
 		}
 
-		if ( in_array( 'skip_media_folder', $options ) ) {
-			$upload_dir      = wp_upload_dir();
-			$upload_base_dir = isset( $upload_dir['basedir'] ) ? $upload_dir['basedir'] : '';
-
-			if ( ! empty( $upload_base_dir ) ) {
-				$migrate_settings['excluded_paths'][] = str_replace( ABSPATH, '', $upload_base_dir );
-			}
-		}
-
-		return apply_filters( 'instawp/filters/process_migration_settings', $migrate_settings );
+		return $migrate_settings;
 	}
 
 	/**
@@ -524,7 +577,7 @@ include $file_path;';
 		if ( empty( $api_key ) ) {
 			return array(
 				'success' => false,
-				'message' => __( 'API key not found', 'instawp-connect' )
+				'message' => __( 'API key not found', 'instawp-connect' ),
 			);
 		}
 		$response = wp_remote_post( 
@@ -533,7 +586,7 @@ include $file_path;';
 				'body'    => $body,
 				'headers' => array(
 					'Authorization' => 'Bearer ' . $api_key,
-					'staging' => $is_staging
+					'staging'       => $is_staging,
 				),
 			)
 		);
@@ -561,9 +614,8 @@ include $file_path;';
 	/**
 	 * Calculate the crc32 based checksum of all files in a WordPress plugin|theme directory.
 	 *
-	 * @param string $dir The path to the specific plugin|theme directory.
-	 * @param string $hash_algo The hashing algorithm to use (e.g., 'md5', 'sha256', 'xxh3').
-	 * @return string The checksum for the entire plugin|theme.
+	 * @param string $folder The path to the specific plugin|theme directory.
+	 * @return array An array of checksum, file_count and size.
 	 */
 	public static function calculate_checksum( $folder ) {
 
@@ -616,7 +668,11 @@ include $file_path;';
 		$finalHash = $totalHash ^ crc32( $fileCount . $totalSize );
 
 		// Return the checksum
-		return sprintf( '%u', $finalHash );
+		return array(
+			'checksum'   => sprintf( '%u', $finalHash ),
+			'file_count' => $fileCount,
+			'size'       => $totalSize,
+		);
 	}
 
 	public static function get_unsupported_active_plugins() {
