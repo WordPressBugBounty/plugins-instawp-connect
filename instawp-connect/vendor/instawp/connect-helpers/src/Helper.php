@@ -29,11 +29,14 @@ class Helper {
 			return false;
 		}
 
-		$php_version      = substr( phpversion(), 0, 3 );
 		$connect_body     = array(
-			'url'         => get_site_url(),
-			'php_version' => $php_version,
-			'username'    => base64_encode( self::get_admin_username() ),
+			'url'            => get_site_url(),
+			'wp_version'     => get_bloginfo( 'version' ),
+			'php_version'    => phpversion(),
+			'plugin_version' => INSTAWP_PLUGIN_VERSION,
+			'title'          => get_bloginfo( 'name' ),
+			'icon'           => get_site_icon_url(),
+			'username'       => base64_encode( self::get_admin_username() ),
 		);
 		$connect_response = Curl::do_curl( 'connects', $connect_body, array(), 'POST', 'v1' );
 
@@ -48,6 +51,11 @@ class Helper {
 				// Send heartbeat to InstaWP
 				if ( function_exists( 'instawp_send_heartbeat' ) ) {
 					instawp_send_heartbeat( $connect_id );
+				}
+
+				// Update staging sites
+				if ( function_exists( 'instawp_set_staging_sites_list' ) ) {
+					instawp_set_staging_sites_list();
 				}
 			} else {
 				error_log( 'instawp_generate_api_key connect id not found in response.' );
