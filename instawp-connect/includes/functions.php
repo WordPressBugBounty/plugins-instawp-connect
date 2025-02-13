@@ -216,19 +216,17 @@ if ( ! function_exists( 'instawp_reset_running_migration' ) ) {
 			}
 		}
 
-        foreach ( array( 'fwd.php', 'dest.php', 'iwp_log.txt' ) as $file ) {
-            if ( file_exists( ABSPATH . $file ) ) {
-                wp_delete_file( ABSPATH . $file );
-            }
-        }
+		// Clean proxy files regarding pull and push migration
+		InstaWP_Tools::clean_instawpbackups_dir( ABSPATH . 'iwp-serve', true );
+		InstaWP_Tools::clean_instawpbackups_dir( ABSPATH . 'iwp-dest', true );
 
 //      $wpdb->query( "DROP TABLE IF EXISTS `iwp_db_sent`;" );
 //      $wpdb->query( "DROP TABLE IF EXISTS `iwp_files_sent`;" );
 //      $wpdb->query( "DROP TABLE IF EXISTS `iwp_options`;" );
 
 		if ( 'hard' === $reset_type ) {
-			if ( $disconnect_connect ) {
-				instawp_disconnect_connect();
+			if ( $disconnect_connect && instawp_is_connected_origin_valid() ) {
+				instawp_destroy_connect();
 			}
 			
 			delete_option( 'instawp_backup_part_size' );
@@ -396,6 +394,27 @@ if ( ! function_exists( 'instawp_set_staging_sites_list' ) ) {
         }
 
         return false;
+	}
+}
+
+/**
+ * Get Migration headers
+ * 
+ * @param string $hash
+ * 
+ * @return array
+ */
+if ( ! function_exists( 'instawp_get_migration_headers' ) ) {
+	function instawp_get_migration_headers( $hash ) {
+		return array(
+			'Authorization' => 'Bearer ' . $hash,
+			'X-IWP-AUTH'    => $hash,
+			'User-Agent'    => 'InstaWP Migration Service',
+			'Content-Type'  => 'application/json',
+			'Cache-Control' => 'no-cache',
+			'Cookie'        => 'instawp_skip_splash=true',
+			'Referer'       => Helper::wp_site_url(),
+		);
 	}
 }
 
@@ -1270,8 +1289,8 @@ if ( ! function_exists( 'instawp_connect_activate_plan' ) ) {
 }
 
 
-if ( ! function_exists( 'instawp_disconnect_connect' ) ) {
-    function instawp_disconnect_connect() {
+if ( ! function_exists( 'instawp_destroy_connect' ) ) {
+    function instawp_destroy_connect( $mode = 'disconnect' ) {
         $connect_id = instawp_get_connect_id();
         if ( empty( $connect_id ) ) {
             return array(
@@ -1280,7 +1299,12 @@ if ( ! function_exists( 'instawp_disconnect_connect' ) ) {
             );
         }
 
-        $api_response = Curl::do_curl( "connects/{$connect_id}/disconnect" );
+		if ( $mode === 'delete' ) {
+			$api_response = Curl::do_curl( "connects/{$connect_id}/delete", array(), array(), 'DELETE' );
+		} else {
+			$api_response = Curl::do_curl( "connects/{$connect_id}/disconnect" );
+		}
+
         if ( empty( $api_response['success'] ) ) {
             return array(
                 'success' => false,
@@ -1295,3 +1319,14 @@ if ( ! function_exists( 'instawp_disconnect_connect' ) ) {
     }
 }
 
+if ( ! function_exists( 'instawp_is_connected_origin_valid' ) ) {
+    function instawp_is_connected_origin_valid() {
+		$connect_origin = Helper::get_connect_origin();
+		$current_url 	= Helper::wp_site_url();
+
+		if ( ! empty( $connect_origin ) ) {
+			return hash_equals( $connect_origin, md5( $current_url ) );
+		}
+        return true;
+    }
+}
