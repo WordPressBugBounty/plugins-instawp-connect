@@ -79,7 +79,7 @@ if ( ! class_exists( 'InstaWP_Hooks' ) ) {
 				$today_date          = new DateTime( current_time( 'mysql' ) );
 				$diff                = $today_date->diff( $plan_activated_date );
 				$remaining_days      = $current_plan['trial'] - $diff->days;
-				
+
 				if ( $remaining_days <= 0 ) {
 					$api_response = Curl::do_curl( "connects/{$connect_id}/delete", array(), array(), 'DELETE' );
 
@@ -127,7 +127,7 @@ if ( ! class_exists( 'InstaWP_Hooks' ) ) {
 
 			$api_key        = Helper::get_api_key();
 			$access_token   = isset( $_REQUEST['access_token'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['access_token'] ) ) : '';
-            $jwt            = isset( $_REQUEST['jwt'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['jwt'] ) ) : '';
+			$jwt            = isset( $_REQUEST['jwt'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['jwt'] ) ) : '';
 			$success_status = isset( $_REQUEST['success'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['success'] ) ) : '';
 			$instawp_nonce  = isset( $_REQUEST['instawp-nonce'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['instawp-nonce'] ) ) : '';
 
@@ -234,6 +234,45 @@ if ( ! class_exists( 'InstaWP_Hooks' ) ) {
 					)
 				);
 			}
+
+			$migration_details = Option::get_option( 'instawp_migration_details' );
+			$migration_status  = InstaWP_Setting::get_args_option( 'status', $migration_details );
+			$is_end_to_end     = (bool) InstaWP_Setting::get_args_option( 'is_end_to_end', $migration_details );
+
+			if ( $migration_status === 'initiated' && $is_end_to_end ) {
+
+				$e2e_tracking_url = InstaWP_Setting::get_args_option( 'e2e_tracking_url', $migration_details );
+				$e2e_tracking_url = empty( $e2e_tracking_url ) ? '#' : $e2e_tracking_url;
+
+				$admin_bar->add_node(
+					array(
+						'id'     => 'instawp_mig_in_progress',
+						'title'  => __( 'Migration in Progress', 'instawp-connect' ),
+						'href'   => $e2e_tracking_url,
+						'meta'   => array(
+							'class' => 'instawp-mig-in-progress',
+						),
+						'parent' => 'top-secondary',
+					)
+				);
+
+				add_action( 'admin_footer', array( $this, 'deactivation_warning_modal' ) );
+			}
+		}
+
+		public function deactivation_warning_modal() {
+			?>
+            <div id="deactivate-modal" class="deactivate-modal">
+                <div class="deactivate-modal-content">
+                    <h3><?php esc_html_e( 'Are you sure?', 'instawp-connect' ); ?></h3>
+                    <p><?php esc_html_e( 'An active migration is in progress. Deactivating the plugin will stop the migration. Do you want to proceed?', 'instawp-connect' ); ?></p>
+                    <div class="deactivate-modal-actions">
+                        <button id="confirm-deactivate" class="deactivate-modal-confirm"><?php esc_html_e( 'Yes, Deactivate', 'instawp-connect' ); ?></button>
+                        <button id="cancel-deactivate" class="deactivate-modal-cancel"><?php esc_html_e( 'No, Continue Migration', 'instawp-connect' ); ?></button>
+                    </div>
+                </div>
+            </div>
+			<?php
 		}
 
 		public function add_instawp_menu_icon( WP_Admin_Bar $admin_bar ) {

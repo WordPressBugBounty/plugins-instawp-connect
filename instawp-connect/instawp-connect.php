@@ -7,7 +7,7 @@
  * @wordpress-plugin
  * Plugin Name:       InstaWP Connect
  * Description:       1-click WordPress plugin for Staging, Migrations, Management, Sync and Companion plugin for InstaWP.
- * Version:           0.1.0.82
+ * Version:           0.1.0.83
  * Author:            InstaWP Team
  * Author URI:        https://instawp.com/
  * License:           GPL-3.0+
@@ -27,7 +27,7 @@ if ( ! defined( 'WPINC' ) ) {
 
 global $wpdb;
 
-defined( 'INSTAWP_PLUGIN_VERSION' ) || define( 'INSTAWP_PLUGIN_VERSION', '0.1.0.82' );
+defined( 'INSTAWP_PLUGIN_VERSION' ) || define( 'INSTAWP_PLUGIN_VERSION', '0.1.0.83' );
 defined( 'INSTAWP_API_DOMAIN_PROD' ) || define( 'INSTAWP_API_DOMAIN_PROD', 'https://app.instawp.io' );
 
 $wp_plugin_url   = WP_PLUGIN_URL . '/' . plugin_basename( __DIR__ ) . '/';
@@ -120,6 +120,7 @@ function instawp_plugin_activate() {
 function instawp_plugin_deactivate() {
 	InstaWP_Tools::instawp_reset_permalink();
 	Option::delete_option( 'instawp_last_heartbeat_sent' );
+	Option::delete_option( 'instawp_migration_details' );
 
 	$connect_id = instawp_get_connect_id();
 	if ( ! empty( $connect_id ) ) {
@@ -154,4 +155,3 @@ function run_instawp() {
 add_filter( 'got_rewrite', '__return_true' );
 
 run_instawp();
-
