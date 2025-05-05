@@ -4,7 +4,7 @@ Tags: clone, migrate, staging, backup, restore
 Requires at least: 5.6
 Tested up to: 6.8
 Requires PHP: 7.0
-Stable tag: 0.1.0.87
+Stable tag: 0.1.0.88
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.en.html
 
@@ -97,6 +97,11 @@ Need support or want to partner with us? Go to our [website](http://instawp.com/
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team helps validate, triage, and handle any security vulnerabilities. [Report a security vulnerability](https://patchstack.com/database/vdp/instawp-connect).
 
 == Changelog ==
+
+= 0.1.0.88 - 05 May 2025 =
+- Fix: V1 API response code
+- Fix: Enhanced clarity in error messages
+- Fix: Push destination file handling in end-to-end migration
 
 = 0.1.0.87 - 17 April 2025 =
 - FIX: Application password verification issue.
