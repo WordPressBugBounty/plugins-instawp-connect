@@ -85,6 +85,30 @@ class InstaWP_Ajax {
 			$cache_api = new Cache();
 			$response  = $cache_api->clean();
 
+			// Also purge InstaCDN (silent - don't block on errors)
+			$cdn_result = instawp_purge_cdn_cache();
+			if ( ! is_wp_error( $cdn_result ) && ! empty( $cdn_result['success'] ) ) {
+				$response[] = array( 'name' => 'InstaCDN' );
+			}
+
+			set_transient( 'instawp_cache_purged', $response, 300 );
+			wp_send_json_success( $response );
+		} elseif ( $type === 'cdn-cache' ) {
+			// InstaCDN-only purge (show error if not InstaSite)
+			$result = instawp_purge_cdn_cache();
+
+			if ( is_wp_error( $result ) ) {
+				wp_send_json_error( array( 'message' => $result->get_error_message() ) );
+			}
+
+			if ( ! is_array( $result ) || empty( $result['success'] ) ) {
+				$message = is_array( $result ) && isset( $result['message'] )
+					? $result['message']
+					: __( 'This site is not hosted with InstaWP.', 'instawp-connect' );
+				wp_send_json_error( array( 'message' => $message ) );
+			}
+
+			$response = array( array( 'name' => 'InstaCDN' ) );
 			set_transient( 'instawp_cache_purged', $response, 300 );
 			wp_send_json_success( $response );
 		} elseif ( $type === 'debug_log' ) {
@@ -205,7 +229,7 @@ class InstaWP_Ajax {
 			$db_offset = Option::get_option( 'instawp_db_offset', 0 );
 			$db_offset = empty( $db_offset ) ? 0 : $db_offset;
 
-			$db_query_res = $tracking_db->query( "SELECT id, table_name, offset, rows_total, completed FROM iwp_db_sent WHERE completed != 0 LIMIT {$db_offset}, 18446744073709551615" );
+			$db_query_res = $tracking_db->query( "SELECT id, table_name, `offset`, rows_total, completed FROM iwp_db_sent WHERE completed != 0 LIMIT {$db_offset}, 18446744073709551615" );
 			if ( $db_query_res instanceof mysqli_result ) {
 				$tracking_db->fetch_rows( $db_query_res, $sendingDB );
 			}
@@ -792,7 +816,7 @@ class InstaWP_Ajax {
 				$jwt     = Helper::get_jwt();
 
 				// Create new connect if not exists
-				Helper::generate_api_key( $api_key, $jwt );
+				instawp_create_api_connect( $api_key, $jwt );
 				$connect_id = instawp_get_connect_id();
 			}
 			Option::delete_option( 'instawp_connect_plan_disconnected' );

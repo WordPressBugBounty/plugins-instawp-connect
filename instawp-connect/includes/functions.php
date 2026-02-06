@@ -191,6 +191,57 @@ if ( ! function_exists( 'instawp_update_migration_stages' ) ) {
 	}
 }
 
+if ( ! function_exists( 'instawp_create_api_connect' ) ) {
+	/**
+	 * Create api connect.
+	 *
+	 * @param string $api_key
+	 * @param string $jwt
+	 * @param array  $config
+	 * @return bool
+	 */
+	function instawp_create_api_connect( $api_key, $jwt = '', $config = array() ) {
+		if ( empty( $config ) || ( is_array( $config ) && empty( $config['group_uuid'] ) ) ) {
+			require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-heartbeat.php';
+			$config['site_information'] = InstaWP_Heartbeat::prepare_data();
+		}
+		return Helper::generate_api_key( $api_key, $jwt, $config );
+	}
+}
+
+if ( ! function_exists( 'instawp_is_admin' ) ) {
+	/**
+	 * Check if user is admin
+	 *
+	 * @param string $check_permission
+	 * @return bool
+	 */
+	function instawp_is_admin( $check_permission = 'manage_options' ) {
+		// Check if we're in admin area first (lightweight check)
+		if ( ! function_exists( 'is_admin' ) || ! is_admin() ) {
+			return false;
+		}
+
+		if ( ! function_exists( 'wp_get_current_user' ) && file_exists( ABSPATH . 'wp-includes/pluggable.php' ) ) {
+			require_once ABSPATH . 'wp-includes/pluggable.php';
+		}
+
+		if ( ! function_exists( 'current_user_can' ) && file_exists( ABSPATH . 'wp-includes/capabilities.php' ) ) {
+			require_once ABSPATH . 'wp-includes/capabilities.php';
+		}
+
+		if ( ! function_exists( 'wp_get_current_user' ) || ! function_exists( 'current_user_can' ) ) {
+			return false;
+		}
+
+		if ( ! function_exists( 'is_user_logged_in' ) || ! is_user_logged_in() ) {
+			return false;
+		}
+
+		return current_user_can( $check_permission );
+	}
+}
+
 
 if ( ! function_exists( 'instawp_reset_running_migration' ) ) {
 	/**
@@ -811,6 +862,32 @@ if ( ! function_exists( 'instawp_send_connect_log' ) ) {
 		}
 
 		return false;
+	}
+}
+
+
+if ( ! function_exists( 'instawp_purge_cdn_cache' ) ) {
+	/**
+	 * Purge CDN cache for the connected site via InstaWP API.
+	 * Only works for sites hosted with InstaWP.
+	 *
+	 * @return array|WP_Error Response from API or error
+	 */
+	function instawp_purge_cdn_cache() {
+		$connect_id = instawp()->connect_id;
+
+		if ( empty( $connect_id ) ) {
+			return new WP_Error( 'no_connect_id', __( 'Site is not connected to InstaWP.', 'instawp-connect' ) );
+		}
+
+		$response = Curl::do_curl(
+			"connects/{$connect_id}/purge-cache",
+			array(),
+			array(),
+			'POST'
+		);
+
+		return $response;
 	}
 }
 
