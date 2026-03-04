@@ -1,18 +1,12 @@
 jQuery(document).ready(function ($) {
 
-    const showSyncError = (message) => {
-        $("#destination-site").attr("disabled", false);
-        $(".sync-changes-btn").removeClass('disable-a loading');
-        $('.sync_error_success_msg').html('<p class="error">' + message + '</p>');
-    };
-
     jQuery('.instawp_select2').select2({
-        width: "100%",
+        width: "180px",
     });
 
     //select2 for default user settings
     jQuery('.instawp_select2_ajax').select2({
-        width: "100%",
+        width: "180px",
         ajax: {
             dataType: 'json',
             delay: 100,
@@ -141,12 +135,12 @@ jQuery(document).ready(function ($) {
                 formData.append('site_id', site_id);
                 formData.append('action', 'instawp_delete_events');
                 formData.append('ids', selectedEvents);
-                baseCall(formData, () => {
+                baseCall(formData).then((response) => response.json()).then((data) => {
                     get_site_events();
                     display_event_action_dropdown();
                     $("body").find('#select-all-event').prop('checked', false);
-                }, (message) => {
-                    alert(message);
+                }).catch((error) => {
+
                 });
             }
         }
@@ -186,25 +180,13 @@ jQuery(document).ready(function ($) {
         packThings(sync_message, 'instawp_single_sync', sync_ids, dest_connect_id);
     });
 
-    const trans = instawp_tws.trans;
-
-    const baseCall = async (body, onSuccess, onError) => {
-        try {
-            body.append('security', instawp_tws.security);
-            const response = await fetch(instawp_tws.ajax_url, {
-                method: "POST",
-                credentials: 'same-origin',
-                body
-            });
-            if (!response.ok) {
-                const statusText = response.statusText || (trans.http_status_text && trans.http_status_text[response.status]) || trans.server_error;
-                throw new Error(trans.http_error + ' ' + response.status + ' - ' + statusText);
-            }
-            const data = await response.json();
-            onSuccess(data);
-        } catch (error) {
-            onError(error && error.message ? error.message : trans.unexpected_error);
-        }
+    const baseCall = async (body) => {
+        body.append('security', instawp_tws.security);
+        return await fetch(instawp_tws.ajax_url, {
+            method: "POST",
+            credentials: 'same-origin',
+            body
+        });
     }
 
     const get_events_summary = async () => {
@@ -219,7 +201,7 @@ jQuery(document).ready(function ($) {
         $(".sync-changes-btn").addClass('disabled');
         $("#event-type-list").addClass('instawp-box-loading').html('');
         $('.sync_error_success_msg').html(' ');
-        baseCall(formData, (response) => {
+        baseCall(formData).then((response) => response.json()).then((response) => {
             $("#event-type-list").removeClass('instawp-box-loading').html(response.data.html);
             if ($('body').find('.event-type-count').length > 3) {
                 $('body').find('.event-type-count:gt(2)').hide();
@@ -234,9 +216,8 @@ jQuery(document).ready(function ($) {
             } else {
                 $(".sync-changes-btn").removeClass('disabled');
             }
-        }, (message) => {
-            $("#event-type-list").removeClass('instawp-box-loading');
-            $('.sync_error_success_msg').html('<p class="error">' + message + '</p>');
+        }).catch((error) => {
+            console.log("Error Occurred: ", error);
         });
     }
 
@@ -255,7 +236,7 @@ jQuery(document).ready(function ($) {
 
         $("#part-sync-results").html('<tr><td colspan="5" class="event-sync-cell loading"></td></tr>');
 
-        baseCall(formData, (data) => {
+        baseCall(formData).then((response) => response.json()).then((data) => {
             $("#part-sync-results").html(data.data.results);
             if (data.data.pagination) {
                 $("#event-sync-pagination").html(data.data.pagination);
@@ -264,8 +245,8 @@ jQuery(document).ready(function ($) {
                 $("#event-sync-pagination").html('');
                 $("#event-sync-pagination-area").addClass('hidden');
             }
-        }, (message) => {
-            $("#part-sync-results").html('<tr><td colspan="5" class="event-sync-cell">' + message + '</td></tr>');
+        }).catch((error) => {
+            console.log("Error Occurred: ", error);
         });
     }
 
@@ -282,14 +263,14 @@ jQuery(document).ready(function ($) {
 
         formData.append('action', 'instawp_is_event_syncing');
         formData.append('sync_status', sync_status);
-        baseCall(formData, (data) => {
+        baseCall(formData).then((response) => response.json()).then((data) => {
             if (data.sync_status === 1 || data.sync_status === '1') {
                 el_sync_recording.addClass('recording-on');
             } else {
                 el_sync_recording.removeClass('recording-on');
             }
-        }, (message) => {
-            $('.sync_error_success_msg').html('<p class="error">' + message + '</p>');
+        }).catch((error) => {
+            console.log("Error Occurred: ", error);
         });
     }
 
@@ -311,17 +292,19 @@ jQuery(document).ready(function ($) {
         formData.append('action', 'instawp_calculate_events');
         formData.append('connect_id', dest_connect_id);
         formData.append('ids', selectedEvents);
-        baseCall(formData, (data) => {
+        baseCall(formData).then((response) => response.json()).then((data) => {
             if (data.success) {
                 jQuery("#destination-site").attr("disabled", true)
                 $(".progress-wrapper").removeClass('hidden');
                 $(".event-progress-text").html(data.data.progress_text)
                 packThings(sync_message, sync_type, dest_connect_id, page = 1, selectedEvents);
             } else {
-                showSyncError(data.message);
+                $(".sync-changes-btn").removeClass('disable-a loading');
+                $('.sync_error_success_msg').html('<p class="error">' + data.message + '</p>');
             }
-        }, (message) => {
-            showSyncError(message);
+
+        }).catch((error) => {
+
         });
     });
 
@@ -340,7 +323,7 @@ jQuery(document).ready(function ($) {
 
         // $('.sync_error_success_msg').html('');
         $(".sync_process .step-1").removeClass('process_pending').addClass('process_inprogress');
-        baseCall(formData, (data) => {
+        baseCall(formData).then((response) => response.json()).then((data) => {
             if (data.success === true) {
                 //Complete Step 1
                 $(".sync_process .step-1").removeClass('process_inprogress').addClass('process_complete');
@@ -348,10 +331,14 @@ jQuery(document).ready(function ($) {
                 $(".sync_process .step-2").removeClass('process_pending').addClass('process_inprogress');
                 bulkSync(sync_message, data.data, sync_type, dest_connect_id, batch_num, ids);
             } else {
-                showSyncError(data.message);
+                $("#destination-site").attr("disabled", false);
+                $(".sync-changes-btn").removeClass('disable-a loading');
+                $('.sync_error_success_msg').html('<p class="error">' + data.message + '</p>');
             }
-        }, (message) => {
-            showSyncError(message);
+        }).catch((error) => {
+            console.log("Error Occurred: ", error);
+            $(".sync-changes-btn").removeClass('disable-a loading');
+            $("#destination-site").attr("disabled", false);
         });
 
     }
@@ -366,7 +353,7 @@ jQuery(document).ready(function ($) {
         formData.append('data', JSON.stringify(data));
         formData.append('page', page);
         formData.append('ids', ids);
-        baseCall(formData, (data) => {
+        baseCall(formData).then((response) => response.json()).then((data) => {
             if (data.success === true) {
                 const paging = data.data;
 
@@ -406,10 +393,10 @@ jQuery(document).ready(function ($) {
                     }, 2000);
                 }
             } else {
-                showSyncError(data.message);
+                $("#destination-site").attr("disabled", false);
+                $(".sync-changes-btn").removeClass('disable-a loading');
+                $('.sync_error_success_msg').html('<p class="error">' + data.message + '</p>');
             }
-        }, (message) => {
-            showSyncError(message);
         });
     }
 });

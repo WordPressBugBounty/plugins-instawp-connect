@@ -7,23 +7,19 @@ class ActionScheduler_IntervalSchedule extends ActionScheduler_Abstract_Recurrin
 
 	/**
 	 * Deprecated property @see $this->__wakeup() for details.
-	 *
-	 * @var null
-	 */
-	private $start_timestamp = null;
+	 **/
+	private $start_timestamp = NULL;
 
 	/**
 	 * Deprecated property @see $this->__wakeup() for details.
-	 *
-	 * @var null
-	 */
-	private $interval_in_seconds = null;
+	 **/
+	private $interval_in_seconds = NULL;
 
 	/**
 	 * Calculate when this schedule should start after a given date & time using
 	 * the number of seconds between recurrences.
 	 *
-	 * @param DateTime $after Timestamp.
+	 * @param DateTime $after
 	 * @return DateTime
 	 */
 	protected function calculate_next( DateTime $after ) {
@@ -32,8 +28,6 @@ class ActionScheduler_IntervalSchedule extends ActionScheduler_Abstract_Recurrin
 	}
 
 	/**
-	 * Schedule interval in seconds.
-	 *
 	 * @return int
 	 */
 	public function interval_in_seconds() {
@@ -61,13 +55,10 @@ class ActionScheduler_IntervalSchedule extends ActionScheduler_Abstract_Recurrin
 		$this->start_timestamp     = $this->scheduled_timestamp;
 		$this->interval_in_seconds = $this->recurrence;
 
-		return array_merge(
-			$sleep_params,
-			array(
-				'start_timestamp',
-				'interval_in_seconds',
-			)
-		);
+		return array_merge( $sleep_params, array(
+			'start_timestamp',
+			'interval_in_seconds'
+		) );
 	}
 
 	/**

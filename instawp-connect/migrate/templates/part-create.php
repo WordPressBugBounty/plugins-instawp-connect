@@ -5,8 +5,6 @@
 
 use InstaWP\Connect\Helpers\Helper;
 
-defined( 'ABSPATH' ) || exit;
-
 global $instawp_settings;
 
 $nav_item_classes  = array( 'nav-item-content' );
@@ -21,13 +19,13 @@ if ( ! empty( $migrate_id ) ) {
 <form action="" method="post" class="<?php echo esc_attr( implode( ' ', $nav_item_classes ) ); ?> create active">
 	<?php
 	if ( instawp()->has_unsupported_plugins || ! instawp()->can_bundle ) {
-		include INSTAWP_PLUGIN_DIR . 'migrate/templates/part-create-error.php';
+		include INSTAWP_PLUGIN_DIR . '/migrate/templates/part-create-error.php';
 	} elseif ( instawp()->is_connected && instawp()->is_on_local ) {
-		include INSTAWP_PLUGIN_DIR . 'migrate/templates/part-create-local.php';
+		include INSTAWP_PLUGIN_DIR . '/migrate/templates/part-create-local.php';
 	} elseif ( instawp()->is_connected ) {
-		include INSTAWP_PLUGIN_DIR . 'migrate/templates/part-create-staging.php';
+		include INSTAWP_PLUGIN_DIR . '/migrate/templates/part-create-staging.php';
 	} else {
-		include INSTAWP_PLUGIN_DIR . 'migrate/templates/part-create-connect.php';
+		include INSTAWP_PLUGIN_DIR . '/migrate/templates/part-create-connect.php';
 	}
 	?>
 </form>

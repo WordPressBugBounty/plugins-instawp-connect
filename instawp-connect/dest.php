@@ -2,7 +2,9 @@
 set_time_limit( 0 );
 error_reporting( 0 );
 
-include_once 'includes/functions-pull-push.php';
+if ( ! file_exists( 'iwp_log.txt' ) ) {
+	file_put_contents( 'iwp_log.txt', "Migration log started \n" );
+}
 
 if ( ! isset( $_SERVER['HTTP_X_IWP_MIGRATE_KEY'] ) || empty( $migrate_key = $_SERVER['HTTP_X_IWP_MIGRATE_KEY'] ) ) {
 	header( 'x-iwp-status: false' );
@@ -10,9 +12,148 @@ if ( ! isset( $_SERVER['HTTP_X_IWP_MIGRATE_KEY'] ) || empty( $migrate_key = $_SE
 	die();
 }
 
-$root_dir_data = iwp_get_root_dir();
+if ( ! function_exists( 'get_wp_root_directory' ) ) {
+	function get_wp_root_directory( $find_with_files = 'wp-load.php', $find_with_dir = '' ) {
+		$is_find_root_dir = true;
+		$root_path        = '';
+
+		if ( ! empty( $find_with_files ) ) {
+			$level            = 0;
+			$root_path_dir    = __DIR__;
+			$root_path        = __DIR__;
+			$is_find_root_dir = true;
+
+			while ( ! file_exists( $root_path . DIRECTORY_SEPARATOR . $find_with_files ) ) {
+
+				++ $level;
+				$root_path = dirname( $root_path_dir, $level );
+
+				if ( $level > 10 ) {
+					$is_find_root_dir = false;
+					break;
+				}
+			}
+		}
+
+		if ( ! empty( $find_with_dir ) ) {
+			$level            = 0;
+			$root_path_dir    = __DIR__;
+			$root_path        = __DIR__;
+			$is_find_root_dir = true;
+			while ( ! is_dir( $root_path . DIRECTORY_SEPARATOR . $find_with_dir ) ) {
+
+				++ $level;
+				$root_path = dirname( $root_path_dir, $level );
+
+				if ( $level > 10 ) {
+					$is_find_root_dir = false;
+					break;
+				}
+			}
+		}
+
+		return array(
+			'status'    => $is_find_root_dir,
+			'root_path' => $root_path,
+		);
+	}
+}
+
+if ( ! function_exists( 'parse_wp_db_host' ) ) {
+	function parse_wp_db_host( $host ) {
+		$socket  = null;
+		$is_ipv6 = false;
+
+		$socket_pos = strpos( $host, ':/' );
+		if ( false !== $socket_pos ) {
+			$socket = substr( $host, $socket_pos + 1 );
+			$host   = substr( $host, 0, $socket_pos );
+		}
+
+		if ( substr_count( $host, ':' ) > 1 ) {
+			$pattern = '#^(?:\[)?(?P<host>[0-9a-fA-F:]+)(?:\]:(?P<port>[\d]+))?#';
+			$is_ipv6 = true;
+		} else {
+			$pattern = '#^(?P<host>[^:/]*)(?::(?P<port>[\d]+))?#';
+		}
+
+		$matches = array();
+		$result  = preg_match( $pattern, $host, $matches );
+
+		if ( 1 !== $result ) {
+			return false;
+		}
+
+		$host = ! empty( $matches['host'] ) ? $matches['host'] : '';
+		$port = ! empty( $matches['port'] ) ? abs( (int) $matches['port'] ) : null;
+
+		return array( $host, $port, $socket, $is_ipv6 );
+	}
+}
+
+if ( ! function_exists( 'str_contains' ) ) {
+	function str_contains( $haystack, $needle ) {
+		if ( '' === $needle ) {
+			return true;
+		}
+
+		return false !== strpos( $haystack, $needle );
+	}
+}
+
+if ( ! function_exists( 'str_starts_with' ) ) {
+	function str_starts_with( $haystack, $needle ) {
+		if ( '' === $needle ) {
+			return true;
+		}
+
+		return 0 === strpos( $haystack, $needle );
+	}
+}
+
+if ( ! function_exists( 'str_ends_with' ) ) {
+	function str_ends_with( $haystack, $needle ) {
+		if ( '' === $haystack ) {
+			return '' === $needle;
+		}
+
+		$len = strlen( $needle );
+
+		return substr( $haystack, - $len, $len ) === $needle;
+	}
+}
+
+if ( ! function_exists( 'array_contains_str' ) ) {
+	function array_contains_str( $string, $array ) {
+		if ( in_array( $string, $array, true ) ) {
+			return true;
+		}
+
+		foreach ( $array as $item ) {
+			if ( str_contains( $string, $item ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+$root_dir_data = get_wp_root_directory();
 $root_dir_find = isset( $root_dir_data['status'] ) ? $root_dir_data['status'] : false;
 $root_dir_path = isset( $root_dir_data['root_path'] ) ? $root_dir_data['root_path'] : '';
+
+if ( ! $root_dir_find ) {
+	$root_dir_data = get_wp_root_directory( '', 'flywheel-config' );
+	$root_dir_find = isset( $root_dir_data['status'] ) ? $root_dir_data['status'] : false;
+	$root_dir_path = isset( $root_dir_data['root_path'] ) ? $root_dir_data['root_path'] : '';
+}
+
+if ( ! $root_dir_find ) {
+	$root_dir_data = get_wp_root_directory( '', 'wp' );
+	$root_dir_find = isset( $root_dir_data['status'] ) ? $root_dir_data['status'] : false;
+	$root_dir_path = isset( $root_dir_data['root_path'] ) ? $root_dir_data['root_path'] : '';
+}
 
 if ( ! $root_dir_find ) {
 	header( 'x-iwp-status: false' );
@@ -21,17 +162,12 @@ if ( ! $root_dir_find ) {
 	exit( 2 );
 }
 
-$log_file_path     = $root_dir_path . DIRECTORY_SEPARATOR . 'iwp-push-log.txt';
-$received_db_path  = $root_dir_path . DIRECTORY_SEPARATOR . 'iwp-db-received.sql';
-$options_data_path = $root_dir_path . DIRECTORY_SEPARATOR . 'migrate-push-db-' . substr( $migrate_key, 0, 5 ) . '.txt';
+$options_data_path = $root_dir_path . DIRECTORY_SEPARATOR . 'wp-content' . DIRECTORY_SEPARATOR . 'instawpbackups' . DIRECTORY_SEPARATOR . 'migrate-push-db-' . substr( $migrate_key, 0, 5 ) . '.txt';
 
 if ( file_exists( $options_data_path ) ) {
 	$options_data_encrypted = file_get_contents( $options_data_path );
-	$decoded_data           = base64_decode( $options_data_encrypted );
-	$openssl_iv             = substr( $decoded_data, 0, 16 );
-	$encrypted_data         = substr( $decoded_data, 16 );
 	$passphrase             = openssl_digest( $migrate_key, 'SHA256', true );
-	$options_data_decrypted = openssl_decrypt( base64_encode( $encrypted_data ), 'AES-256-CBC', $passphrase, 0, $openssl_iv );
+	$options_data_decrypted = openssl_decrypt( $options_data_encrypted, 'AES-256-CBC', $passphrase );
 	$jsonData               = json_decode( $options_data_decrypted, true );
 
 	if ( $jsonData !== null ) {
@@ -55,23 +191,10 @@ if ( ! isset( $api_signature ) || ! isset( $_SERVER['HTTP_X_IWP_API_SIGNATURE'] 
 
 $has_zip_archive = class_exists( 'ZipArchive' );
 $has_phar_data   = class_exists( 'PharData' );
-$excluded_paths  = isset( $excluded_paths ) ? $excluded_paths : array();
 
 if ( isset( $_POST['check'] ) ) {
-
-	if ( ! isset( $db_host ) || ! isset( $db_username ) || ! isset( $db_password ) || ! isset( $db_name ) ) {
-		header( 'x-iwp-status: false' );
-		header( 'x-iwp-message: Database information missing.' );
-		die();
-	}
-
-	$timestamp            = date( 'YmdHi' );
-	$db_backup_response   = iwp_backup_wp_database( $db_host, $db_username, $db_password, $db_name, $root_dir_path, $timestamp );
-	$core_backup_response = iwp_backup_wp_core_folders( $root_dir_path, $excluded_paths, $timestamp );
-
 	header( 'x-iwp-zip: ' . $has_zip_archive );
 	header( 'x-iwp-phar: ' . $has_phar_data );
-	header( 'x-iwp-message: ' . json_encode( $core_backup_response ) . json_encode( $db_backup_response ) );
 	die();
 }
 
@@ -81,19 +204,86 @@ if ( ! isset( $_SERVER['HTTP_X_FILE_RELATIVE_PATH'] ) ) {
 	die();
 }
 
+if ( ! function_exists( 'zipStatusString' ) ) {
+	function zipStatusString( $status ) {
+		if ( ! class_exists( 'ZipArchive' ) ) {
+			return 'ZipArchive Extension is not enabled!';
+		}
+
+		switch ( $status ) {
+			case ZipArchive::ER_OK:
+				return 'No error';
+			case ZipArchive::ER_MULTIDISK:
+				return 'Multi-disk zip archives not supported';
+			case ZipArchive::ER_RENAME:
+				return 'Renaming temporary file failed';
+			case ZipArchive::ER_CLOSE:
+				return 'Closing zip archive failed';
+			case ZipArchive::ER_SEEK:
+				return 'Seek error';
+			case ZipArchive::ER_READ:
+				return 'Read error';
+			case ZipArchive::ER_WRITE:
+				return 'Write error';
+			case ZipArchive::ER_CRC:
+				return 'CRC error';
+			case ZipArchive::ER_ZIPCLOSED:
+				return 'Containing zip archive was closed';
+			case ZipArchive::ER_NOENT:
+				return 'No such file';
+			case ZipArchive::ER_EXISTS:
+				return 'File already exists';
+			case ZipArchive::ER_OPEN:
+				return 'Can\'t open file';
+			case ZipArchive::ER_TMPOPEN:
+				return 'Failure to create temporary file';
+			case ZipArchive::ER_ZLIB:
+				return 'Zlib error';
+			case ZipArchive::ER_MEMORY:
+				return 'Malloc failure';
+			case ZipArchive::ER_CHANGED:
+				return 'Entry has been changed';
+			case ZipArchive::ER_COMPNOTSUPP:
+				return 'Compression method not supported';
+			case ZipArchive::ER_EOF:
+				return 'Premature EOF';
+			case ZipArchive::ER_INVAL:
+				return 'Invalid argument';
+			case ZipArchive::ER_NOZIP:
+				return 'Not a zip archive';
+			case ZipArchive::ER_INTERNAL:
+				return 'Internal error';
+			case ZipArchive::ER_INCONS:
+				return 'Zip archive inconsistent';
+			case ZipArchive::ER_REMOVE:
+				return 'Can\'t remove file';
+			case ZipArchive::ER_DELETED:
+				return 'Entry has been deleted';
+			default:
+				return 'Unknown status: ' . $status;
+		}
+	}
+}
+
+$excluded_paths     = isset( $excluded_paths ) ? $excluded_paths : array();
 $file_relative_path = trim( $_SERVER['HTTP_X_FILE_RELATIVE_PATH'] );
 $file_type          = isset( $_SERVER['HTTP_X_FILE_TYPE'] ) ? trim( $_SERVER['HTTP_X_FILE_TYPE'] ) : 'single';
 $req_order          = isset( $_GET['r'] ) ? intval( $_GET['r'] ) : 1;
+
+//if ( ! file_exists( $root_dir_path . DIRECTORY_SEPARATOR . 'iwp_log.txt' ) ) {
+//    file_put_contents( $root_dir_path . DIRECTORY_SEPARATOR . 'iwp_log.txt', json_encode($excluded_paths) );
+//}
 
 if ( in_array( $file_relative_path, $excluded_paths ) ) {
 	exit( 0 );
 }
 
 $file_save_path = $root_dir_path . DIRECTORY_SEPARATOR . $file_relative_path;
-
+//file_put_contents( $root_dir_path . DIRECTORY_SEPARATOR . 'iwp_log.txt', "full path: " . $file_save_path . "\n", FILE_APPEND );
 if ( in_array( $file_save_path, $excluded_paths ) || str_contains( $file_save_path, 'instawp-autologin' ) ) {
 	exit( 0 );
 }
+//file_put_contents( $root_dir_path . DIRECTORY_SEPARATOR . 'iwp_log.txt', "full path success" . "\n", FILE_APPEND );
 
 $directory_name = dirname( $file_save_path );
 
@@ -112,6 +302,7 @@ if ( $file_relative_path === 'db.sql' ) {
 	if ( file_exists( $file_save_path ) ) {
 		unlink( $file_save_path );
 	}
+//  $file_save_path = $root_dir_path . DIRECTORY_SEPARATOR . time() . '.sql'; // added for debugging
 	$file_stream = fopen( $file_save_path, 'a+b' );
 } else {
 	$file_stream = fopen( $file_save_path, 'wb' );
@@ -202,8 +393,6 @@ if ( $file_type === 'db' ) {
 	$sql_commands = file_get_contents( $file_save_path );
 	$commands     = explode( ";\n\n", $sql_commands );
 
-	file_put_contents( $received_db_path, $sql_commands, FILE_APPEND );
-
 	foreach ( $commands as $command ) {
 		if ( ! empty( trim( $command ) ) ) {
 			if ( extension_loaded( 'mysqli' ) ) {
@@ -223,84 +412,53 @@ if ( $file_type === 'db' ) {
 
 		if ( isset( $_SERVER['HTTP_X_IWP_PROGRESS'] ) ) {
 			$log_content = "x-iwp-progress: {$_SERVER['HTTP_X_IWP_PROGRESS']}\n";
-			file_put_contents( $log_file_path, $log_content, FILE_APPEND );
+			file_put_contents( 'iwp_log.txt', $log_content, FILE_APPEND );
 		}
 
 		if ( isset( $_SERVER['HTTP_X_IWP_PROGRESS'] ) && $_SERVER['HTTP_X_IWP_PROGRESS'] == 100 ) {
-
-			// Retaining user after migration
-			if ( $retain_user ) {
-
-				$user_details_data  = isset( $user_details['data'] ) ? (array) $user_details['data'] : array();
-				$user_details_caps  = isset( $user_details['caps'] ) ? (array) $user_details['caps'] : array();
-				$user_details_roles = isset( $user_details['roles'] ) ? (array) $user_details['roles'] : array();
-
-				$user_data = array(
-					'user_login'          => isset( $user_details_data['user_login'] ) ? $user_details_data['user_login'] : '',
-					'user_pass'           => isset( $user_details_data['user_pass'] ) ? base64_decode( $user_details_data['user_pass'] ) : '',
-					'user_nicename'       => isset( $user_details_data['user_nicename'] ) ? $user_details_data['user_nicename'] : '',
-					'user_email'          => isset( $user_details_data['user_email'] ) ? $user_details_data['user_email'] : '',
-					'user_url'            => isset( $user_details_data['user_url'] ) ? $user_details_data['user_url'] : '',
-					'user_registered'     => isset( $user_details_data['user_registered'] ) ? $user_details_data['user_registered'] : '',
-					'user_activation_key' => isset( $user_details_data['user_activation_key'] ) ? $user_details_data['user_activation_key'] : '',
-					'user_status'         => isset( $user_details_data['user_status'] ) ? $user_details_data['user_status'] : '',
-					'display_name'        => isset( $user_details_data['display_name'] ) ? $user_details_data['display_name'] : '',
-				);
-
-				$fields = implode( ', ', array_keys( $user_data ) );
-				$values = "'" . implode( "', '", array_map( array( $mysqli, 'real_escape_string' ), $user_data ) ) . "'";
-				$query  = "INSERT INTO {$table_prefix}users ($fields) VALUES ($values)";
-
-				$query_response = $mysqli->query( $query );
-
-				if ( $query_response ) {
-					$user_id = $mysqli->insert_id;
-
-					if ( $user_id ) {
-						// Set user capabilities
-						$caps_key   = $mysqli->real_escape_string( $table_prefix . 'capabilities' );
-						$caps_value = $mysqli->real_escape_string( iwp_maybe_serialize( $user_details_caps ) );
-						$caps_query = "INSERT INTO {$table_prefix}usermeta (user_id, meta_key, meta_value) VALUES ($user_id, '$caps_key', '$caps_value')";
-						$mysqli->query( $caps_query );
-
-						// Set user roles
-						$roles_key   = $mysqli->real_escape_string( $table_prefix . 'user_level' );
-						$roles_value = $mysqli->real_escape_string( max( array_keys( $user_details_roles ) ) );
-						$roles_query = "INSERT INTO {$table_prefix}usermeta (user_id, meta_key, meta_value) VALUES ($user_id, '$roles_key', '$roles_value')";
-						$mysqli->query( $roles_query );
-					}
-				}
-
-				if ( $mysqli->error ) {
-					file_put_contents( $log_file_path, "insert response: " . $mysqli->error . "\n", FILE_APPEND );
-				}
-			}
-
 
 			// update instawp_api_options after the push db finished
 			if ( ! empty( $instawp_api_options ) ) {
 				$is_insert_failed = false;
 
 				try {
-					$query           = "INSERT INTO `{$table_prefix}options` (`option_name`, `option_value`) VALUES('instawp_api_options', '{$instawp_api_options}')";
+					$query = "INSERT INTO `{$table_prefix}options` (`option_name`, `option_value`) VALUES('instawp_api_options', '{$instawp_api_options}')";
+
+					// log start
+					file_put_contents( 'iwp_log.txt', "insert query: " . $query . "\n", FILE_APPEND );
+					// log end
+
 					$insert_response = $mysqli->query( $query );
+
+					// log start
+					file_put_contents( 'iwp_log.txt', "insert response: " . var_dump( $insert_response ) . "\n", FILE_APPEND );
+					// log end
 
 					if ( ! $insert_response ) {
 						$is_insert_failed = true;
 					}
 				} catch ( Exception $e ) {
-					file_put_contents( $log_file_path, "insert exception: " . $e->getMessage() . "\n", FILE_APPEND );
+					// log start
+					file_put_contents( 'iwp_log.txt', "insert exception: " . $e->getMessage() . "\n", FILE_APPEND );
+					// log end
 
 					$is_insert_failed = true;
 				}
 
 				if ( $is_insert_failed ) {
 					try {
-						$query           = "UPDATE `{$table_prefix}options` SET `option_value` = '{$instawp_api_options}' WHERE `option_name` = 'instawp_api_options'";
-						$update_response = $mysqli->query( $query );
-					} catch ( Exception $e ) {
-						file_put_contents( $log_file_path, "Update failed. Error message: {$e->getMessage()}\n", FILE_APPEND );
+						$query = "UPDATE `{$table_prefix}options` SET `option_value` = '{$instawp_api_options}' WHERE `option_name` = 'instawp_api_options'";
 
+						// log start
+						file_put_contents( 'iwp_log.txt', "update query: " . $query . "\n", FILE_APPEND );
+						// log end
+
+						$update_response = $mysqli->query( $query );
+
+						// log start
+						file_put_contents( 'iwp_log.txt', "update response: " . var_dump( $update_response ) . "\n", FILE_APPEND );
+						// log end
+					} catch ( Exception $e ) {
 						header( 'x-iwp-status: false' );
 						header( "x-iwp-message: Update failed. Error message: {$e->getMessage()}\n" );
 						die();
@@ -319,9 +477,9 @@ if ( $file_type === 'db' ) {
 		mysql_close( $connection );
 	}
 
-//	if ( file_exists( $file_save_path ) ) {
-//		unlink( $file_save_path );
-//	}
+	if ( file_exists( $file_save_path ) ) {
+		unlink( $file_save_path );
+	}
 }
 
 $is_wp_config_file = false;
@@ -337,11 +495,8 @@ if ( $file_type === 'zip' ) {
 				for ( $i = 0; $i < $zip->numFiles; $i ++ ) {
 					$file_name = $zip->getNameIndex( $i );
 
-					if ( false !== strpos( $directory_name, DIRECTORY_SEPARATOR . 'wp-content' ) || false !== strpos( $directory_name, DIRECTORY_SEPARATOR . 'wp-includes' ) || false !== strpos( $directory_name, DIRECTORY_SEPARATOR . 'wp-admin' ) ) {
-						if ( ! array_contains_str( $directory_name . DIRECTORY_SEPARATOR . $file_name, $excluded_paths ) && ! str_contains( $file_name, 'instawp-autologin' ) ) {
-							$extracted_files[] = $file_name;
-						}
-					} else if ( ! in_array( $file_name, $excluded_paths ) && ! str_contains( $file_name, 'instawp-autologin' ) ) {
+					if ( ! array_contains_str( $directory_name . DIRECTORY_SEPARATOR . $file_name, $excluded_paths ) && ! str_contains( $file_name, 'instawp-autologin' ) ) {
+						//file_put_contents( $root_dir_path . DIRECTORY_SEPARATOR . 'iwp_log.txt', "zip path: " . $directory_name . DIRECTORY_SEPARATOR . $file_name . "\n", FILE_APPEND );
 						$extracted_files[] = $file_name;
 					}
 				}
@@ -377,21 +532,13 @@ if ( $file_type === 'zip' ) {
 		try {
 			$phar            = new PharData( $file_save_path );
 			$extracted_files = [];
+			foreach ( new RecursiveIteratorIterator( $phar ) as $file ) {
+				$file_name = $file->getRelativePathname();
 
-			try {
-				$phar     = new PharData( $file_save_path );
-				$iterator = new RecursiveIteratorIterator( $phar );
-
-				foreach ( $iterator as $file ) {
-					$file_name = str_replace( $phar->getPath() . '/', '', $file->getPathname() );
-					// $file_name         = str_replace( 'phar://', '', $file_name );
+				if ( ! array_contains_str( $directory_name . DIRECTORY_SEPARATOR . $file_name, $excluded_paths ) && ! str_contains( $file_name, 'instawp-autologin' ) ) {
+					//file_put_contents( $root_dir_path . DIRECTORY_SEPARATOR . 'iwp_log.txt', "phar path: " . $directory_name . DIRECTORY_SEPARATOR . $file_name . "\n", FILE_APPEND );
 					$extracted_files[] = $file_name;
 				}
-
-			} catch ( Throwable $e ) {
-				header( 'x-iwp-status: false' );
-				header( 'x-iwp-message: Error in extracting zip file using PharData. Actual error message is - ' . $e->getMessage() );
-				die();
 			}
 
 			foreach ( $extracted_files as $file ) {
@@ -415,6 +562,7 @@ if ( $file_type === 'zip' ) {
 }
 
 if ( str_contains( $file_relative_path, 'wp-config.php' ) || $is_wp_config_file ) {
+	//file_put_contents( $root_dir_path . DIRECTORY_SEPARATOR . 'iwp_log.txt', "wp-config.php" . "\n", FILE_APPEND );
 	if ( ! isset( $db_host ) || ! isset( $db_username ) || ! isset( $db_password ) || ! isset( $db_name ) ) {
 		header( 'x-iwp-status: false' );
 		header( 'x-iwp-message: Database information missing.' );
@@ -508,4 +656,3 @@ if ( str_contains( $file_relative_path, 'wp-config.php' ) || $is_wp_config_file 
 
 header( 'x-iwp-status: true' );
 header( 'x-iwp-message: Success! ' . $file_relative_path );
-

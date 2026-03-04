@@ -6,7 +6,7 @@ if ( ! defined( 'INSTAWP_PLUGIN_DIR' ) ) {
 
 if ( ! function_exists( 'adminer_object' ) ) {
 	function adminer_object() {
-        class InstaWP_Adminer extends \Adminer\Adminer {
+        class InstaWP_Adminer extends Adminer {
             function name() {
                 return 'InstaWP Database Manager';
             }
@@ -23,8 +23,7 @@ if ( ! function_exists( 'adminer_object' ) ) {
                 return ( $login === DB_USER && $password === DB_PASSWORD );
             }
 
-            function head( $dark = null ) {
-                wp_site_icon(); ?>
+            function head() { ?>
                 <style>
                     #version,
                     #dbs,
@@ -32,24 +31,22 @@ if ( ! function_exists( 'adminer_object' ) ) {
                     p.logout {
                         display: none;
                     }
-                    /* #menu {
-                        top: 0;
-                    }
-                    #content {
-                        margin-top: 0;
-                        padding: 10px 10px 10px 0 !important;
-                    } */
                     #menu h1 {
                         padding: .8em 1em !important;
                         background-image: none;
                     }
                     #breadcrumb > a:nth-child(1) {
                         pointer-events: none;
-                        color: inherit;
+                        color: #000;
                     }
                     #breadcrumb > a:nth-child(2) {
+                        width: 17px;
+                        display: inline-block;
+                        margin-left: -14px;
+                        color: transparent;
+                        background: #eee;
+                        margin-right: -23px;
                         pointer-events: none;
-                        color: inherit;
                     }
                     .footer > div > fieldset > div > p {
                         color: transparent;
@@ -61,10 +58,12 @@ if ( ! function_exists( 'adminer_object' ) ) {
                         display: none;
                     }
                     .footer > div > fieldset > div > p > [name="copy"] {
+                        float: left;
                         pointer-events: all;
                     }
                 </style>
                 <?php
+                wp_site_icon();
                 return true;
             }
         }
@@ -73,7 +72,7 @@ if ( ! function_exists( 'adminer_object' ) ) {
 	}
 }
 
-$file_name = sanitize_file_name( get_query_var( 'instawp-database-manager' ) );
+$file_name = get_query_var( 'instawp-database-manager' );
 if ( ! empty( $file_name ) ) {
     $file_path = \InstaWP\Connect\Helpers\DatabaseManager::get_file_path( $file_name );
 

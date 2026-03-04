@@ -1,5 +1,4 @@
-<?php global $migrate_id;
-
+<?php
 /**
  * @link              https://instawp.com/
  * @since             0.0.1
@@ -8,7 +7,7 @@
  * @wordpress-plugin
  * Plugin Name:       InstaWP Connect
  * Description:       1-click WordPress plugin for Staging, Migrations, Management, Sync and Companion plugin for InstaWP.
- * Version:           0.1.2.5
+ * Version:           0.1.0.50
  * Author:            InstaWP Team
  * Author URI:        https://instawp.com/
  * License:           GPL-3.0+
@@ -17,21 +16,37 @@
  * Domain Path:       /languages
  */
 
+// If this file is called directly, abort.
 use InstaWP\Connect\Helpers\Curl;
 use InstaWP\Connect\Helpers\Helper;
 use InstaWP\Connect\Helpers\Option;
 
-// If this file is called directly, abort.
 if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
 global $wpdb;
 
-defined( 'INSTAWP_PLUGIN_VERSION' ) || define( 'INSTAWP_PLUGIN_VERSION', '0.1.2.5' );
+defined( 'INSTAWP_PLUGIN_VERSION' ) || define( 'INSTAWP_PLUGIN_VERSION', '0.1.0.50' );
 defined( 'INSTAWP_API_DOMAIN_PROD' ) || define( 'INSTAWP_API_DOMAIN_PROD', 'https://app.instawp.io' );
 
-defined( 'INSTAWP_PLUGIN_URL' ) || define( 'INSTAWP_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+$wp_plugin_url   = WP_PLUGIN_URL . '/' . plugin_basename( __DIR__ ) . '/';
+$wp_site_url     = get_option( 'siteurl' );
+$parsed_site_url = wp_parse_url( $wp_site_url );
+
+if ( isset( $parsed_site_url['scheme'] ) && strtolower( $parsed_site_url['scheme'] ) === 'http' ) {
+	$is_protocol_https = ( ! empty( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ) || ( ! empty( $_SERVER['SERVER_PORT'] ) && $_SERVER['SERVER_PORT'] === 443 );
+
+	if ( ! $is_protocol_https ) {
+		$is_protocol_https = ( ! empty( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) && strtolower( sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) ) ) === 'https' );
+	}
+
+	if ( $is_protocol_https ) {
+		$wp_plugin_url = str_replace( 'http://', 'https://', $wp_plugin_url );
+	}
+}
+
+defined( 'INSTAWP_PLUGIN_URL' ) || define( 'INSTAWP_PLUGIN_URL', $wp_plugin_url );
 defined( 'INSTAWP_PLUGIN_DIR' ) || define( 'INSTAWP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 defined( 'INSTAWP_PLUGIN_FILE' ) || define( 'INSTAWP_PLUGIN_FILE', plugin_basename( __FILE__ ) );
 defined( 'INSTAWP_DEFAULT_BACKUP_DIR' ) || define( 'INSTAWP_DEFAULT_BACKUP_DIR', 'instawpbackups' );
@@ -61,24 +76,24 @@ function instawp_plugin_activate() {
 	InstaWP_Tools::instawp_reset_permalink();
 	do_action( 'instawp_prepare_large_files_list' );
 
-	// set default user for sync settings if user empty
+	//set default user for sync settings if user empty
 	$default_user = Option::get_option( 'instawp_default_user' );
 	if ( empty( $default_user ) ) {
-		Option::update_option( 'instawp_default_user', get_current_user_id() );
+		add_option( 'instawp_default_user', get_current_user_id() );
 	}
 
 	$instawp_sync_tab_roles = Option::get_option( 'instawp_sync_tab_roles' );
 	if ( empty( $instawp_sync_tab_roles ) ) {
 		$user  = wp_get_current_user();
-		$roles = (array) $user->roles;
-		Option::update_option( 'instawp_sync_tab_roles', $roles );
+		$roles = ( array ) $user->roles;
+		add_option( 'instawp_sync_tab_roles', $roles );
 	}
 
 	$connect_id = instawp_get_connect_id();
 	if ( ! empty( $connect_id ) ) {
-		$response = Curl::do_curl( "connects/{$connect_id}/restore", array( 'url' => Helper::wp_site_url( '', true ) ) );
+		$response = Curl::do_curl( "connects/{$connect_id}/restore", array( 'url' => site_url() ) );
 		if ( empty( $response['success'] ) ) {
-			Option::delete_option( 'instawp_api_options' );
+			delete_option( 'instawp_api_options' );
 		}
 	}
 }
@@ -86,8 +101,7 @@ function instawp_plugin_activate() {
 /*Deactivate Hook Handle*/
 function instawp_plugin_deactivate() {
 	InstaWP_Tools::instawp_reset_permalink();
-	Option::delete_option( 'instawp_last_heartbeat_sent' );
-	Option::delete_option( 'instawp_migration_details' );
+	delete_option( 'instawp_last_heartbeat_sent' );
 
 	$connect_id = instawp_get_connect_id();
 	if ( ! empty( $connect_id ) ) {
@@ -122,3 +136,4 @@ function run_instawp() {
 add_filter( 'got_rewrite', '__return_true' );
 
 run_instawp();
+

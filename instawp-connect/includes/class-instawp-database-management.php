@@ -50,7 +50,7 @@ if ( ! class_exists( 'InstaWP_Database_Management' ) ) {
         }
 
 		public function redirect() {
-			$template_name = sanitize_file_name( get_query_var( DatabaseManager::$query_var, false ) );
+			$template_name = get_query_var( DatabaseManager::$query_var, false );
 			if ( $template_name && ! $this->get_template() ) {
 				wp_safe_redirect( home_url() );
 				exit();
@@ -113,13 +113,9 @@ if ( ! class_exists( 'InstaWP_Database_Management' ) ) {
 		}
 
 		private function get_template( $template = false ) {
-			if ( ! current_user_can( 'manage_options' ) ) {
-				return $template;
-			}
-
-			$template_name = sanitize_file_name( get_query_var( DatabaseManager::$query_var ) );
+			$template_name = get_query_var( DatabaseManager::$query_var );
 			$template_path = DatabaseManager::get_file_path( $template_name );
-			$loader_path   = INSTAWP_PLUGIN_DIR . 'includes/database-manager/loader.php';
+			$loader_path   = INSTAWP_PLUGIN_DIR . '/includes/database-manager/loader.php';
 
 			if ( file_exists( $template_path ) && file_exists( $loader_path ) ) {
 				$template = $loader_path;

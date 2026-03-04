@@ -1,17 +1,9 @@
 <?php
 
 // If uninstall not called from WordPress, then exit.
-use InstaWP\Connect\Helpers\Helper;
-
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
-
-if ( ! class_exists( 'InstaWP\Connect\Helpers\Helper' ) && function_exists( 'plugin_dir_path' ) ) {
-	require_once plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
-}
-
-global $wpdb;
 
 defined( 'INSTAWP_DEFAULT_BACKUP_DIR' ) || define( 'INSTAWP_DEFAULT_BACKUP_DIR', 'instawpbackups' );
 
@@ -34,28 +26,16 @@ $api_options = get_option( 'instawp_api_options', array() );
 $connect_id  = isset( $api_options['connect_id'] ) ? $api_options['connect_id'] : '';
 $api_key     = isset( $api_options['api_key'] ) ? $api_options['api_key'] : '';
 $api_url     = isset( $api_options['api_url'] ) ? $api_options['api_url'] : 'https://app.instawp.io';
-$site_url    = $wpdb->get_var( "SELECT option_value FROM {$wpdb->options} WHERE option_name = 'siteurl'" );
-$site_url    = empty( $site_url ) ? site_url() : $site_url;
 
 if ( ! empty( $connect_id ) && ! empty( $api_key ) ) {
-	$args = array(
-		'headers'         => array(
+	wp_remote_post( "{$api_url}/api/v2/connects/{$connect_id}/disconnect", array(
+		'headers' => array(
 			'Authorization' => 'Bearer ' . $api_key,
 			'Accept'        => 'application/json',
 			'Content-Type'  => 'application/json',
-			'Referer'       => $site_url,
+			'Referer'       => site_url(),
 		),
-		'timeout'         => 60,
-		'redirection'     => 10,
-		'httpversion'     => '1.1',
-		'user-agent'      => class_exists( 'InstaWP\Connect\Helpers\Helper' ) ? Helper::getInstaWPUserAgent( 'connect/disconnect' ) : 'InstaWP/1.0 (https://instawp.com; support@instawp.com) connect/disconnect',
-		'sslverify'       => false,
-		'sslverifyhost'   => false,
-		'follow_location' => true,
-		'max_redirects'   => 10,
-	);
-
-	wp_remote_post( "{$api_url}/api/v2/connects/{$connect_id}/disconnect", $args );
+	) );
 }
 
 delete_option( 'instawp_api_options' );
@@ -78,9 +58,9 @@ delete_option( 'instawp_rm_debug_log' );
 delete_option( 'instawp_last_heartbeat_sent' );
 delete_option( 'instawp_is_staging' );
 delete_option( 'instawp_is_event_syncing' );
-delete_option( 'instawp_staging_sites' );
 
 delete_transient( 'instawp_migration_completed' );
+delete_transient( 'instawp_staging_sites' );
 delete_transient( 'instawp_generate_large_files' );
 
 // Clear scheduled tasks.

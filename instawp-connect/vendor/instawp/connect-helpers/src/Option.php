@@ -10,7 +10,7 @@ class Option {
 			foreach( $args as $name => $value ) {
 				$results[] = [
 					'name'    => $name,
-					'success' => self::update_option( $name, $value ),
+					'success' => update_option( $name, $value, false ),
 				];
 			}
 		} catch ( \Exception $e ) {
@@ -30,7 +30,7 @@ class Option {
 			foreach( $args as $name ) {
 				$results[] = [
 					'name'    => $name,
-					'success' => self::delete_option( $name ),
+					'success' => delete_option( $name ),
 				];
 			}
 		} catch ( \Exception $e ) {
@@ -49,9 +49,5 @@ class Option {
 
 	public static function update_option( $option_name, $option_value, $autoload = false ) {
 		return update_option( $option_name, $option_value, $autoload );
-	}
-
-	public static function delete_option( $option_name ) {
-		return delete_option( $option_name );
 	}
 }

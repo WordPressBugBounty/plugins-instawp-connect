@@ -4,7 +4,6 @@
  */
 
 use InstaWP\Connect\Helpers\Curl;
-use InstaWP\Connect\Helpers\Helper;
 use InstaWP\Connect\Helpers\Option;
 
 defined( 'ABSPATH' ) || exit;
@@ -17,49 +16,11 @@ if ( ! class_exists( 'InstaWP_Activity_Log' ) ) {
 		public function __construct() {
 			$this->table_name = INSTAWP_DB_TABLE_ACTIVITY_LOGS;
 
-            add_action( 'init', array( $this, 'register_events' ) );
-            add_action( 'add_option_instawp_activity_log', array( $this, 'clear_action_create_table' ), 10, 2 );
-            add_action( 'update_option_instawp_activity_log', array( $this, 'clear_action_create_table' ), 10, 2 );
-            add_action( 'add_option_instawp_activity_log_interval_minutes', array( $this, 'clear_action' ) );
-            add_action( 'update_option_instawp_activity_log_interval_minutes', array( $this, 'clear_action' ) );
-			add_action( 'instawp_handle_non_critical_logs', array( $this, 'send_log_data' ) );
+			add_action( 'init', array( $this, 'create_table' ) );
+			add_action( 'instawp_handle_critical_logs', array( $this, 'send_data' ) );
 		}
 
-        public function register_events() {
-			if ( ! instawp()->activity_log_enabled ) {
-				return;
-			}
-
-            $activity_log_interval = Option::get_option( 'instawp_activity_log_interval', 'instantly' );
-            $activity_log_interval = empty( $activity_log_interval ) ? 'instantly' : $activity_log_interval;
-
-            if ( $activity_log_interval !== 'every_x_minutes' ) {
-				return;
-			}
-
-            $interval = Option::get_option( 'instawp_activity_log_interval_minutes', 5 );
-            $interval = empty( $interval ) ? 5 : (int) $interval;
-
-        	if ( ! as_has_scheduled_action( 'instawp_handle_non_critical_logs', array(), 'instawp-connect' ) ) {
-                as_schedule_recurring_action( time(), ( $interval * MINUTE_IN_SECONDS ), 'instawp_handle_non_critical_logs', array(), 'instawp-connect' );
-            }
-        }
-
-		public function clear_action_create_table( $name, $value ) {
-			instawp()->activity_log_enabled = $value === 'on';
-			
-			if ( $value === 'on' ) {
-				$this->create_table();
-			}
-
-            $this->clear_action();
-        }
-
-        public function clear_action() {
-            as_unschedule_all_actions( 'instawp_handle_non_critical_logs', array(), 'instawp-connect' );
-        }
-
-		public function send_log_data( $critical = false ) {
+		public function send_data() {
 			$connect_id = instawp_get_connect_id();
 			if ( ! $connect_id ) {
 				return;
@@ -67,36 +28,25 @@ if ( ! class_exists( 'InstaWP_Activity_Log' ) ) {
 
 			global $wpdb;
 
-            if ( $critical ) {
-                $query = $wpdb->prepare( "SELECT * FROM {$this->table_name} WHERE severity=%s", 'critical' ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            } else {
-                $query = $wpdb->prepare( "SELECT * FROM {$this->table_name} WHERE severity!=%s", 'critical' ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            }
-
 			$log_ids = $logs = array();
-			$results = $wpdb->get_results( $query );
+			$results = $wpdb->get_results(
+				$wpdb->prepare( "SELECT * FROM {$this->table_name} WHERE severity=%s", 'critical' ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			);
 
 			foreach ( $results as $result ) {
-				$logs[] = array(
-                    'action'    => $result->action,
+				$logs[ $result->action ] = array(
 					'data_type' => current( explode( '_', $result->action ) ),
+					'count'     => ! empty( $logs[ $result->action ]['count'] ) ? $logs[ $result->action ]['count'] + 1 : 1,
 					'meta'      => array(),
 					'data'      => array( ( array ) $result ),
 				);
 				$log_ids[] = $result->id;
 			}
 
-            if ( empty( $log_ids ) ) {
-                return;
-            }
-
-			$success    = false;
-            $api_domain = Helper::get_api_server_domain();
-            $jwt        = Helper::get_jwt();
-
+			$success = false;
 			for ( $i = 0; $i < 10; $i ++ ) {
-				$response = Curl::do_curl( "connects/{$connect_id}/activity-log", array( 'activity_logs' => $logs ), array(), 'POST', null, $jwt, $api_domain );
-                if ( intval( $response['code'] ) === 200 ) {
+				$response = Curl::do_curl( "connects/{$connect_id}/activity-log", array( 'activity_logs' => $logs ) );
+				if ( intval( $response['code'] ) === 200 ) {
 					$success = true;
 					break;
 				}
@@ -157,36 +107,28 @@ if ( ! class_exists( 'InstaWP_Activity_Log' ) ) {
 			$args['severity'] = $this->get_severity( $args['action'] );
 			$args             = $this->setup_userdata( $args );
 
-			if ( $wpdb->get_var( "SHOW TABLES LIKE '{$this->table_name}'" ) === $this->table_name ) {
-				$wpdb->insert(
-					$this->table_name,
-					array(
-						'action'         => $args['action'],
-						'severity'       => $args['severity'],
-						'object_type'    => $args['object_type'],
-						'object_subtype' => $args['object_subtype'],
-						'object_name'    => $args['object_name'],
-						'object_id'      => $args['object_id'],
-						'user_id'        => $args['user_id'],
-						'user_name'      => $args['user_name'],
-						'user_caps'      => $args['user_caps'],
-						'user_ip'        => $args['user_ip'],
-						'timestamp'      => $args['timestamp'],
-					),
-					array( '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s' )
-				);
+			$wpdb->insert(
+				$this->table_name,
+				array(
+					'action'         => $args['action'],
+					'severity'       => $args['severity'],
+					'object_type'    => $args['object_type'],
+					'object_subtype' => $args['object_subtype'],
+					'object_name'    => $args['object_name'],
+					'object_id'      => $args['object_id'],
+					'user_id'        => $args['user_id'],
+					'user_name'      => $args['user_name'],
+					'user_caps'      => $args['user_caps'],
+					'user_ip'        => $args['user_ip'],
+					'timestamp'      => $args['timestamp'],
+				),
+				array( '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s' )
+			);
+
+			if ( 'critical' === $args['severity'] ) {
+				wp_unschedule_hook( 'instawp_handle_critical_logs' );
+				wp_schedule_single_event( time() + 10, 'instawp_handle_critical_logs' );
 			}
-
-            $activity_log_interval = Option::get_option( 'instawp_activity_log_interval', 'instantly' );
-            $activity_log_interval = empty( $activity_log_interval ) ? 'instantly' : $activity_log_interval;
-
-            if ( 'critical' === $args['severity'] ) {
-                $this->send_log_data( true );
-            }
-
-            if ( 'critical' !== $args['severity'] && 'instantly' === $activity_log_interval ) {
-                $this->send_log_data();
-            }
 		}
 
 		private function setup_userdata( array $args ) {
@@ -264,14 +206,12 @@ if ( ! class_exists( 'InstaWP_Activity_Log' ) ) {
 					'plugin_installed',
 					'plugin_updated',
 					'plugin_file_updated',
-					'core_updated_minor',
 				),
 				'critical' => array(
 					'post_deleted',
 					'user_deleted',
 					'theme_deleted',
 					'plugin_deleted',
-					'core_updated_major',
 				),
 			);
 		}

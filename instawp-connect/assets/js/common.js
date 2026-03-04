@@ -13,13 +13,7 @@
             },
             success: function (response) {
                 console.log(response)
-                // Check if response indicates failure (wp_send_json_error returns success: false)
-                if (!response.success) {
-                    var message = response.data?.message || 'An error occurred. Please try again.';
-                    alert(message);
-                    return;
-                }
-                if (el.attr('target') === 'cache' || el.attr('target') === 'cdn-cache') {
+                if(el.attr('target') === 'cache') {
                     const urlObj = new URL(window.location.href);
                     urlObj.searchParams.delete('instawp-cache-cleared');
                     urlObj.searchParams.set('instawp-cache-cleared', '1');
@@ -30,8 +24,6 @@
             },
             error: function (jqXHR, textStatus, errorThrown) {
                 console.log(errorThrown);
-                var message = jqXHR.responseJSON?.data?.message || 'Request failed. Please try again.';
-                alert(message);
             }
         });
     });
@@ -42,24 +34,5 @@
         localStorage.setItem('instawp_admin_current', el.attr('target'));
         window.location = el.attr('href');
     });
-
-    $(document).on('click', 'tr[data-slug="instawp-connect"] .deactivate > a', function (e) {
-        if (instawp_common.mig_in_progress && instawp_common.mig_in_progress === 'yes') {
-            e.preventDefault();
-
-            $('#deactivate-modal').fadeIn('100');
-
-            return false;
-        }
-    });
-
-    $(document).on('click', '#cancel-deactivate', function (e) {
-        $('#deactivate-modal').fadeOut('100');
-    });
-
-    $(document).on('click', '#confirm-deactivate', function (e) {
-        window.location.href = $('tr[data-slug="instawp-connect"] .deactivate > a').attr('href');
-    });
-
 })(jQuery, window, document, instawp_common);
 

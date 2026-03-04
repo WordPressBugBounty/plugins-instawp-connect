@@ -2,20 +2,82 @@
 set_time_limit( 0 );
 error_reporting( 0 );
 
-include_once 'includes/functions-pull-push.php';
-
 $migrate_key   = isset( $_POST['migrate_key'] ) ? $_POST['migrate_key'] : '';
 $api_signature = isset( $_POST['api_signature'] ) ? $_POST['api_signature'] : '';
 
 if ( empty( $migrate_key ) ) {
 	header( 'x-iwp-status: false' );
-	header( 'x-iwp-message: The migration key from fetch script is empty. All received data: ' . json_encode( $_POST ) );
+	header( 'x-iwp-message: The migration key is invalid.' );
 	die();
 }
 
-$root_dir_data = iwp_get_root_dir();
+
+
+function get_wp_root_directory( $find_with_files = 'wp-load.php', $find_with_dir = '' ) {
+
+	$is_find_root_dir = true;
+	$root_path        = '';
+	$searching_tier   = 10;
+
+	if ( ! empty( $find_with_files ) ) {
+		$level            = 0;
+		$root_path_dir    = __DIR__;
+		$root_path        = __DIR__;
+		$is_find_root_dir = true;
+
+		while ( ! file_exists( $root_path . DIRECTORY_SEPARATOR . $find_with_files ) ) {
+			++ $level;
+
+			$path_parts = explode( DIRECTORY_SEPARATOR, $root_path );
+			array_pop( $path_parts ); // Remove the last directory
+			$root_path = implode( DIRECTORY_SEPARATOR, $path_parts );
+
+			if ( $level > $searching_tier ) {
+				$is_find_root_dir = false;
+				break;
+			}
+		}
+	}
+
+	if ( ! empty( $find_with_dir ) ) {
+		$level            = 0;
+		$root_path_dir    = __DIR__;
+		$root_path        = __DIR__;
+		$is_find_root_dir = true;
+		while ( ! is_dir( $root_path . DIRECTORY_SEPARATOR . $find_with_dir ) ) {
+			++ $level;
+			$path_parts = explode( DIRECTORY_SEPARATOR, $root_path );
+			array_pop( $path_parts ); // Remove the last directory
+			$root_path = implode( DIRECTORY_SEPARATOR, $path_parts );
+
+			if ( $level > $searching_tier ) {
+				$is_find_root_dir = false;
+				break;
+			}
+		}
+	}
+
+	return array(
+		'status'    => $is_find_root_dir,
+		'root_path' => $root_path,
+	);
+}
+
+$root_dir_data = get_wp_root_directory();
 $root_dir_find = isset( $root_dir_data['status'] ) ? $root_dir_data['status'] : false;
 $root_dir_path = isset( $root_dir_data['root_path'] ) ? $root_dir_data['root_path'] : '';
+
+if ( ! $root_dir_find ) {
+	$root_dir_data = get_wp_root_directory( '', 'flywheel-config' );
+	$root_dir_find = isset( $root_dir_data['status'] ) ? $root_dir_data['status'] : false;
+	$root_dir_path = isset( $root_dir_data['root_path'] ) ? $root_dir_data['root_path'] : '';
+}
+
+if ( ! $root_dir_find ) {
+	$root_dir_data = get_wp_root_directory( '', 'wp' );
+	$root_dir_find = isset( $root_dir_data['status'] ) ? $root_dir_data['status'] : false;
+	$root_dir_path = isset( $root_dir_data['root_path'] ) ? $root_dir_data['root_path'] : '';
+}
 
 if ( ! $root_dir_find ) {
 	header( 'x-iwp-status: false' );
@@ -23,14 +85,6 @@ if ( ! $root_dir_find ) {
 	echo "Could not find wp-config.php in the parent directories.";
 	exit( 2 );
 }
-
-$root_dir_path_arr = explode( '/', $root_dir_path );
-
-if ( end( $root_dir_path_arr ) === 'wp-content' ) {
-	array_pop( $root_dir_path_arr );
-}
-
-$root_dir_path = implode( DIRECTORY_SEPARATOR, $root_dir_path_arr );
 
 defined( 'CHUNK_SIZE' ) | define( 'CHUNK_SIZE', 2 * 1024 * 1024 );
 defined( 'BATCH_ZIP_SIZE' ) | define( 'BATCH_ZIP_SIZE', 50 );
@@ -40,8 +94,8 @@ defined( 'BATCH_SIZE' ) | define( 'BATCH_SIZE', 100 );
 defined( 'WP_ROOT' ) | define( 'WP_ROOT', $root_dir_path );
 defined( 'INSTAWP_BACKUP_DIR' ) | define( 'INSTAWP_BACKUP_DIR', WP_ROOT . DIRECTORY_SEPARATOR . 'wp-content' . DIRECTORY_SEPARATOR . 'instawpbackups' . DIRECTORY_SEPARATOR );
 
-$iwpdb_main_path = WP_ROOT . DIRECTORY_SEPARATOR . 'wp-content' . DIRECTORY_SEPARATOR . 'plugins' . DIRECTORY_SEPARATOR . 'instawp-connect' . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'class-instawp-iwpdb.php';
-$iwpdb_git_path  = WP_ROOT . DIRECTORY_SEPARATOR . 'wp-content' . DIRECTORY_SEPARATOR . 'plugins' . DIRECTORY_SEPARATOR . 'instawp-connect-main' . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'class-instawp-iwpdb.php';
+$iwpdb_main_path = WP_ROOT . '/wp-content/plugins/instawp-connect/includes/class-instawp-iwpdb.php';
+$iwpdb_git_path  = WP_ROOT . '/wp-content/plugins/instawp-connect-main/includes/class-instawp-iwpdb.php';
 
 if ( file_exists( $iwpdb_main_path ) && is_readable( $iwpdb_main_path ) ) {
 	require_once( $iwpdb_main_path );
@@ -79,8 +133,314 @@ if ( ! hash_equals( $db_api_signature, $api_signature ) ) {
 	die();
 }
 
-
 if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
+
+	if ( ! function_exists( 'get_server_temp_dir' ) ) {
+		function get_server_temp_dir() {
+			if ( function_exists( 'sys_get_temp_dir' ) ) {
+				$temp = sys_get_temp_dir();
+				if ( @is_dir( $temp ) && is_writable( $temp ) ) {
+					return $temp . '/';
+				}
+			}
+
+			$temp = ini_get( 'upload_tmp_dir' );
+			if ( @is_dir( $temp ) && is_writable( $temp ) ) {
+				return $temp . '/';
+			}
+
+			$temp = WP_ROOT . '/';
+			if ( is_dir( $temp ) && is_writable( $temp ) ) {
+				return $temp;
+			}
+
+			return '/tmp/';
+		}
+	}
+
+	if ( ! function_exists( 'readfile_chunked' ) ) {
+		function readfile_chunked( $filename, $retbytes = true ) {
+			$cnt    = 0;
+			$handle = fopen( $filename, 'rb' );
+
+			if ( $handle === false ) {
+				return false;
+			}
+
+			while ( ! feof( $handle ) ) {
+				$buffer = fread( $handle, CHUNK_SIZE );
+				echo $buffer;
+				ob_flush();
+				flush();
+
+				if ( $retbytes ) {
+					$cnt += strlen( $buffer );
+				}
+			}
+
+			$status = fclose( $handle );
+
+			if ( $retbytes && $status ) {
+				return $cnt;
+			}
+
+			return $status;
+		}
+	}
+
+	if ( ! function_exists( 'send_by_zip' ) ) {
+		function send_by_zip( IWPDB $tracking_db, $unsentFiles = array(), $progress_percentage = '', $archiveType = 'ziparchive', $handle_config_separately = false ) {
+			header( 'Content-Type: zip' );
+			header( 'x-file-type: zip' );
+			header( 'x-iwp-progress: ' . $progress_percentage );
+
+			$tmpZip          = tempnam( get_server_temp_dir(), 'batchzip' );
+			$zipSuccessFiles = array();
+
+			if ( $archiveType === 'ziparchive' ) {
+				$archive = new ZipArchive();
+
+				if ( $archive->open( $tmpZip, ZipArchive::OVERWRITE ) !== true ) {
+					die( "Cannot open zip archive" );
+				}
+			} elseif ( $archiveType === 'phardata' ) {
+				$tmpZip  .= '.zip';
+				$archive = new PharData( $tmpZip );
+			} else {
+				die( "Invalid archive type" );
+			}
+
+			header( 'x-iwp-filename: ' . $tmpZip );
+
+			foreach ( $unsentFiles as $file ) {
+				$tracking_db->update( 'iwp_files_sent', array( 'sent' => 2 ), array( 'id' => $file['id'] ) ); // mark as sending
+
+				$filePath         = isset( $file['filepath'] ) ? $file['filepath'] : '';
+				$relativePath     = ltrim( str_replace( WP_ROOT, "", $filePath ), DIRECTORY_SEPARATOR );
+				$filePath         = process_files( $tracking_db, $filePath, $relativePath );
+				$file_fopen_check = fopen( $filePath, 'r' );
+				$file_name        = basename( $filePath );
+
+				if ( ! $file_fopen_check ) {
+					$tracking_db->update( 'iwp_files_sent', array( 'sent' => 3 ), array( 'id' => $file['id'] ) ); // mark as failed
+					error_log( 'Can not open file: ' . $filePath );
+					continue;
+				}
+
+				fclose( $file_fopen_check );
+
+				if ( ! is_readable( $filePath ) ) {
+					$tracking_db->update( 'iwp_files_sent', array( 'sent' => 3 ), array( 'id' => $file['id'] ) ); // mark as failed
+					error_log( 'Can not read file: ' . $filePath );
+					continue;
+				}
+
+				if ( ! is_file( $filePath ) ) {
+					$tracking_db->update( 'iwp_files_sent', array( 'sent' => 3 ), array( 'id' => $file['id'] ) ); // mark as failed
+					error_log( 'Invalid file: ' . $filePath );
+					continue;
+				}
+
+				if ( $handle_config_separately && $file_name === 'wp-config.php' ) {
+					$relativePath = $file_name;
+				}
+
+				$added_to_zip = $archive->addFile( $filePath, $relativePath );
+
+				if ( ! $added_to_zip ) {
+					$tracking_db->update( 'iwp_files_sent', array( 'sent' => 3 ), array( 'id' => $file['id'] ) ); // mark as failed
+					error_log( 'Could not add to zip. File: : ' . $filePath );
+				} else {
+					$zipSuccessFiles[] = $file;
+				}
+			}
+
+			try {
+				if ( $archiveType === 'ziparchive' ) {
+					$archive->close();
+				}
+
+				readfile_chunked( $tmpZip );
+			} catch ( Exception $exception ) {
+				header( 'x-iwp-status: false' );
+				header( 'x-iwp-message: The migration script could not read this specific file. Actual exception message is: ' . $exception->getMessage() );
+			}
+
+			foreach ( $zipSuccessFiles as $file ) {
+				$tracking_db->update( 'iwp_files_sent', array( 'sent' => 1 ), array( 'id' => $file['id'] ) );
+			}
+
+			unlink( $tmpZip );
+		}
+	}
+
+	if ( ! function_exists( 'search_and_comment_specific_line' ) ) {
+		function search_and_comment_specific_line( $pattern, $file_contents ) {
+
+			$matches = array();
+
+			if ( preg_match_all( $pattern, $file_contents, $matches, PREG_OFFSET_CAPTURE ) ) {
+				foreach ( $matches[0] as $match ) {
+					$line_content  = strtok( substr( $file_contents, $match[1] ), "\n" );
+					$file_contents = str_replace( $line_content, "// $line_content", $file_contents );
+				}
+			}
+
+			return $file_contents;
+		}
+	}
+
+	if ( ! function_exists( 'process_files' ) ) {
+		function process_files( IWPDB $tracking_db, $filePath, $relativePath ) {
+			$site_url         = $tracking_db->get_option( 'site_url' );
+			$dest_url         = $tracking_db->get_option( 'dest_url' );
+			$migrate_settings = $tracking_db->get_option( 'migrate_settings' );
+			$options          = isset( $migrate_settings['options'] ) ? $migrate_settings['options'] : array();
+
+			if ( basename( $relativePath ) === '.htaccess' ) {
+
+				$content  = file_get_contents( $filePath );
+				$tmp_file = tempnam( get_server_temp_dir(), 'htaccess' );
+
+				// RSSR Support
+				$pattern = '/#Begin Really Simple SSL Redirect.*?#End Really Simple SSL Redirect/s';
+				$content = preg_replace( $pattern, '', $content );
+
+				// MalCare Support
+				$pattern = '/#MalCare WAF.*?#END MalCare WAF/s';
+				$content = preg_replace( $pattern, '', $content );
+
+				// Comment any any php_value
+				$content = preg_replace( '/^\s*php_value\s+/m', '# php_value ', $content );
+				$content = preg_replace( '/^\s*php_flag\s+/m', '# php_flag ', $content );
+
+				// Comment some unnecessary lines in htaccess
+				$content = preg_replace( '/^(.*AuthGroupFile.*)$/m', '# $1', $content );
+				$content = preg_replace( '/^(.*AuthUserFile.*)$/m', '# $1', $content );
+				$content = preg_replace( '/^(.*AuthName.*)$/m', '# $1', $content );
+				$content = preg_replace( '/^(.*ErrorDocument.*)$/m', '# $1', $content );
+				$content = str_replace( 'SetHandler proxy:fcgi://continental-php82', '# SetHandler proxy:fcgi://continental-php82', $content );
+				$content = preg_replace( '/^(.*proxy:fcgi.*)$/m', '# $1', $content );
+
+				if ( ! empty( $site_url ) ) {
+					$url_path = parse_url( $site_url, PHP_URL_PATH );
+
+					$content .= "# url_path: $url_path\n";
+
+					if ( ! empty( $url_path ) && $url_path !== '/' ) {
+
+						$content .= "# url_path_inside: $url_path\n";
+
+						$content = preg_replace( '/RewriteBase\s+\/([^\/]+)\//', 'RewriteBase /', $content );
+						$content = preg_replace( "/(RewriteRule\s+\.\s+\/)([^\/]+)/", 'RewriteRule . ', $content );
+
+						/**
+						 * @todo will finalize the logic latter
+						 */
+//						$content = str_replace( $url_path, '/', $content );
+//						$content = str_replace( "RewriteBase //", "RewriteBase /", $content );
+//						$content = str_replace( "RewriteRule . //index.php", "RewriteRule . /index.php", $content );
+					}
+
+					if ( in_array( 'skip_media_folder', $options ) ) {
+						$htaccess_content = array(
+							'## BEGIN InstaWP Connect',
+							'<IfModule mod_rewrite.c>',
+							'RewriteEngine On',
+							'RewriteCond %{REQUEST_FILENAME} !-f',
+							'RewriteRule ^wp-content/uploads/(.*)$ ' . $site_url . '/wp-content/uploads/$1 [R=301,L]',
+							'</IfModule>',
+							'## END InstaWP Connect',
+						);
+						$htaccess_content = implode( "\n", $htaccess_content );
+						$content          = $htaccess_content . "\n\n" . $content;
+					}
+				}
+
+				if ( file_put_contents( $tmp_file, $content ) ) {
+					$filePath = $tmp_file;
+				}
+			} elseif ( $relativePath === 'wp-config.php' ) {
+				$file_contents = file_get_contents( $filePath );
+				$file_contents = str_replace( $site_url, $dest_url, $file_contents );
+
+				// Flywheel support
+				$file_contents = str_replace( "define('ABSPATH', dirname(__FILE__) . '/.wordpress/');", "define( 'ABSPATH', dirname( __FILE__ ) . '/' );", $file_contents );
+
+				// GridPane Support
+				$file_contents = str_replace( "include __DIR__ . '/user-configs.php';", "// include __DIR__ . '/user-configs.php';", $file_contents );
+				$file_contents = str_replace( "include __DIR__ . '/wp-fail2ban-configs.php';", "// include __DIR__ . '/wp-fail2ban-configs.php';", $file_contents );
+				$file_contents = str_replace( "include __DIR__ . '/smtp-provider-wp-configs.php';", "// include __DIR__ . '/smtp-provider-wp-configs.php';", $file_contents );
+
+				// Comment WP_SITEURL constant
+				$file_contents = search_and_comment_specific_line( "/define\(\s*'WP_SITEURL'/", $file_contents );
+
+				// Comment WP_HOME constant
+				$file_contents = search_and_comment_specific_line( "/define\(\s*'WP_HOME'/", $file_contents );
+
+				// Comment COOKIE_DOMAIN constant
+				$file_contents = search_and_comment_specific_line( "/define\(\s*'COOKIE_DOMAIN'/", $file_contents );
+
+				$tmp_file = tempnam( get_server_temp_dir(), 'wp-config' );
+				if ( file_put_contents( $tmp_file, $file_contents ) ) {
+					$filePath = $tmp_file;
+				}
+			} elseif ( $relativePath === 'index.php' ) {
+				$file_contents = file_get_contents( $filePath );
+				$file_contents = str_replace( "/.wordpress/wp-blog-header.php", "/wp-blog-header.php", $file_contents );
+
+				$tmp_file = tempnam( get_server_temp_dir(), 'index' );
+				if ( file_put_contents( $tmp_file, $file_contents ) ) {
+					$filePath = $tmp_file;
+				}
+			}
+
+			return $filePath;
+		}
+	}
+
+	if ( ! function_exists( 'is_valid_file' ) ) {
+		function is_valid_file( $filepath ) {
+			$filename = basename( $filepath );
+            if ( empty( $filename ) ) {
+                return false;
+            }
+
+            // Check for disallowed characters
+            $disallowed = array( '/', '\\', ':', '*', '?', '"', '<', '>', '|' );
+            foreach ( $disallowed as $char ) {
+                if ( strpos( $filename, $char ) !== false ) {
+                    return false;
+                }
+            }
+
+            if ( $filename === '.' || $filename === '..' ) {
+                return false;
+            }
+
+			return is_file( $filepath ) && is_readable( $filepath );
+		}
+	}
+
+	if ( ! function_exists( 'get_iterator_items' ) ) {
+		function get_iterator_items( $skip_folders, $root ) {
+			$filter_directory = function ( SplFileInfo $file, $key, RecursiveDirectoryIterator $iterator ) use ( $skip_folders ) {
+
+				$relative_path = ! empty( $iterator->getSubPath() ) ? $iterator->getSubPath() . '/' . $file->getBasename() : $file->getBasename();
+
+				if ( in_array( $relative_path, $skip_folders ) ) {
+					return false;
+				}
+
+				return ! in_array( $iterator->getSubPath(), $skip_folders );
+			};
+			$directory        = new RecursiveDirectoryIterator( $root, RecursiveDirectoryIterator::SKIP_DOTS | RecursiveDirectoryIterator::FOLLOW_SYMLINKS );
+
+			return new RecursiveIteratorIterator( new RecursiveCallbackFilterIterator( $directory, $filter_directory ), RecursiveIteratorIterator::LEAVES_ONLY, RecursiveIteratorIterator::CATCH_GET_CHILD );
+		}
+	}
+
+//  $total_files_path         = INSTAWP_BACKUP_DIR . '.total-files-' . $migrate_key;
 	$migrate_settings         = $tracking_db->get_option( 'migrate_settings' );
 	$excluded_paths           = isset( $migrate_settings['excluded_paths'] ) ? $migrate_settings['excluded_paths'] : array();
 	$skip_folders             = array_merge( array( 'wp-content/cache', 'editor', 'wp-content/upgrade', 'wp-content/instawpbackups' ), $excluded_paths );
@@ -119,34 +479,15 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 		// Create a limited iterator to skip the files that are already indexed
 		$limitedIterator = array();
 		try {
-			$iterator   = get_iterator_items( $skip_folders, WP_ROOT );
-			$totalFiles = iterator_count( $iterator );
-
-			if ( $totalFiles == 0 ) {
-				throw new Exception( "No files found in the iterator." );
-			}
-
 			$limitedIterator = new LimitIterator( $iterator, $currentFileIndex, BATCH_SIZE );
-
-			// Test if the limited iterator has any items
-			$limitedIterator->rewind();
-			if ( ! $limitedIterator->valid() ) {
-				header( 'x-iwp-status: false' );
-				header( "x-iwp-message: LimitIterator is empty. Current file index: $currentFileIndex, Batch size: " . BATCH_SIZE );
-				die();
-			}
 		} catch ( Exception $e ) {
 			header( 'x-iwp-status: false' );
-			header( 'x-iwp-message: Migration script could not traverse files using the limited iterator. Error: ' . $e->getMessage() );
+			header( 'x-iwp-message: Migration script could not traverse all the files using the limited iterator. Actual reason is: ' . $e->getMessage() );
 			die();
 		}
 
 		$totalFiles = iterator_count( $iterator );
-		// Add plugins and themes files in total files count
-		if ( ! empty( $totalFiles ) && ! empty( $migrate_settings['inventory_items'] ) && ! empty( $migrate_settings['inventory_items']['total_files'] ) ) {
-			$totalFiles = intval( $totalFiles ) + intval( $migrate_settings['inventory_items']['total_files'] );
-		}
-		$fileIndex = 0;
+		$fileIndex  = 0;
 
 		if ( $handle_config_separately ) {
 			$totalFiles            += 1;
@@ -154,10 +495,10 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 			$config_file_path_hash = hash( 'sha256', $config_file_size );
 
 			$tracking_db->insert( 'iwp_files_sent', array(
-				'filepath'      => $tracking_db->use_wpdb ? $config_file_path : "'$config_file_path'",
-				'filepath_hash' => $tracking_db->use_wpdb ? $config_file_path_hash : "'$config_file_path_hash'",
+				'filepath'      => "'$config_file_path'",
+				'filepath_hash' => "'$config_file_path_hash'",
 				'sent'          => 0,
-				'size'          => $tracking_db->use_wpdb ? $config_file_size : "'$config_file_size'",
+				'size'          => "'$config_file_size'",
 			) );
 		}
 
@@ -165,18 +506,18 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 
 		foreach ( $limitedIterator as $file ) {
 
-			$filepath = '';
-			$filesize = 0;
+			$filepath      = '';
+			$filesize      = 0;
 
 			try {
-				$filepath = $file->getPathname();
-				$filesize = $file->getSize();
+				$filepath      = $file->getPathname();
+				$filesize      = $file->getSize();
 			} catch ( Exception $e ) {
 				$tracking_db->insert( 'iwp_files_sent', array(
-					'filepath'      => $tracking_db->use_wpdb ? $filepath : "'$filepath'",
+					'filepath'      => "'$filepath'",
 					'filepath_hash' => "",
 					'sent'          => 5,
-					'size'          => $tracking_db->use_wpdb ? $filesize : "'$filesize'",
+					'size'          => "'$filesize'",
 				) );
 				continue;
 			}
@@ -186,10 +527,10 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 			if ( ! is_valid_file( $filepath ) ) {
 				try {
 					$tracking_db->insert( 'iwp_files_sent', array(
-						'filepath'      => $tracking_db->use_wpdb ? $filepath : "'$filepath'",
-						'filepath_hash' => $tracking_db->use_wpdb ? $filepath_hash : "'$filepath_hash'",
+						'filepath'      => "'$filepath'",
+						'filepath_hash' => "'$filepath_hash'",
 						'sent'          => 5,
-						'size'          => $tracking_db->use_wpdb ? $filesize : "'$filesize'",
+						'size'          => "'$filesize'",
 					) );
 				} catch ( Exception $e ) {
 				}
@@ -202,10 +543,10 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 			if ( ! $row ) {
 				try {
 					$tracking_db->insert( 'iwp_files_sent', array(
-						'filepath'      => $tracking_db->use_wpdb ? $filepath : "'$filepath'",
-						'filepath_hash' => $tracking_db->use_wpdb ? $filepath_hash : "'$filepath_hash'",
+						'filepath'      => "'$filepath'",
+						'filepath_hash' => "'$filepath_hash'",
 						'sent'          => 0,
-						'size'          => $tracking_db->use_wpdb ? $filesize : "'$filesize'",
+						'size'          => "'$filesize'",
 					) );
 					++ $fileIndex;
 				} catch ( Exception $e ) {
@@ -237,13 +578,10 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 			'idx_sent'      => 'sent',
 			'idx_file_size' => 'size',
 		) );
-
-		// Send plugin and theme inventory
-		iwp_send_plugin_theme_inventory( $migrate_settings );
 	}
 
-
-	//TODO: this query runs every time even if there are no files to zip, may be we can cache the result in first time and don't run the query
+	//TODO: this query runs every time even if there are no files to zip, may be we can
+	//cache the result in first time and don't run the query
 
 	$is_archive_available = false;
 	$unsentFiles          = array();
@@ -273,7 +611,7 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 		$row = $tracking_db->get_row( 'iwp_files_sent', array( 'sent' => '0' ) );
 
 		if ( $row ) {
-			$tracking_db->update( 'iwp_files_sent', array( 'sent' => 2 ), array( 'id' => $row['id'] ) ); // mark as sending
+			$tracking_db->update( 'iwp_files_sent', array( 'sent' => '2' ), array( 'id' => $row['id'] ) ); // mark as sending
 
 			$fileId       = $row['id'];
 			$filePath     = $row['filepath'];
@@ -284,6 +622,7 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 			if ( $handle_config_separately && $file_name === 'wp-config.php' ) {
 				$relativePath = $file_name;
 			}
+
 			header( 'Content-Type: application/octet-stream' );
 			header( 'x-file-relative-path: ' . $relativePath );
 			header( 'x-iwp-progress: ' . $progress_percentage );
@@ -297,11 +636,7 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 		} else {
 			$iterator   = get_iterator_items( $skip_folders, WP_ROOT );
 			$totalFiles = iterator_count( $iterator );
-			// Add plugins and themes files in total files count
-			if ( ! empty( $totalFiles ) && ! empty( $migrate_settings['inventory_items'] ) && ! empty( $migrate_settings['inventory_items']['total_files'] ) ) {
-				$totalFiles = intval( $totalFiles ) + intval( $migrate_settings['inventory_items']['total_files'] );
-			}
-			$fileIndex = 0;
+			$fileIndex  = 0;
 
 			$tracking_db->db_update_option( 'total_files', $totalFiles );
 
@@ -318,10 +653,10 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 				if ( ! is_valid_file( $filepath ) ) {
 					try {
 						$tracking_db->insert( 'iwp_files_sent', array(
-							'filepath'      => $tracking_db->use_wpdb ? $filepath : "'$filepath'",
-							'filepath_hash' => $tracking_db->use_wpdb ? $filepath_hash : "'$filepath_hash'",
+							'filepath'      => "'$filepath'",
+							'filepath_hash' => "'$filepath_hash'",
 							'sent'          => 5,
-							'size'          => $tracking_db->use_wpdb ? $filesize : "'$filesize'",
+							'size'          => "'$filesize'",
 						) );
 					} catch ( Exception $e ) {
 					}
@@ -357,116 +692,6 @@ if ( isset( $_REQUEST['serve_type'] ) && 'files' === $_REQUEST['serve_type'] ) {
 	}
 }
 
-
-/**
- * Inventory success - If all plugins and themes have been installed
- * and if so, mark all files as sent.
- */
-if ( isset( $_REQUEST['serve_type'] ) && 'inventory_sent_files' === $_REQUEST['serve_type'] && function_exists( 'iwp_sanitize_key' ) ) {
-
-	$slug = empty( $_POST['slug'] ) ? '' : iwp_sanitize_key( $_POST['slug'] );
-	if ( empty( $slug ) ) {
-		header( 'x-iwp-status: false' );
-		header( 'x-iwp-message: Empty slug provided.' );
-		die();
-	}
-	$message = '';
-	if ( ! empty( $_POST['failed_items'] ) ) {
-		$mig_settings = $tracking_db->get_option( 'migrate_settings' );
-		if ( ! empty( $mig_settings ) && ! empty( $mig_settings['inventory_items'] ) && ! empty( $mig_settings['excluded_paths'] ) && ! empty( $mig_settings['inventory_items']['total_files'] ) ) {
-			$failed_item_files = 0;
-			$include_paths     = array();
-			// Failed to install items
-			foreach ( $_POST['failed_items'] as $failed_item ) {
-				if ( empty( $failed_item['slug'] ) || empty( $failed_item['path'] ) || empty( $failed_item['file_count'] ) ) {
-					continue;
-				}
-				// failed item files count
-				$failed_item_files += intval( $failed_item['file_count'] );
-
-				$include_paths[] = $failed_item['path'];
-
-				$slug = iwp_sanitize_key( $failed_item['slug'] );
-				// Update inventory sent files
-				$tracking_db->update(
-					'iwp_files_sent',
-					array(
-						'size'       => 0,
-						'file_count' => 0,
-					),
-					array(
-						'file_type'     => 'inventory',
-						'sent_filename' => $slug,
-					)
-				);
-			}
-
-			if ( ! empty( $include_paths ) ) {
-				// Update excluded paths
-				$mig_settings['excluded_paths'] = array_diff( $mig_settings['excluded_paths'], $include_paths );
-				// Update total files
-				$mig_settings['inventory_items']['total_files'] = intval( $mig_settings['inventory_items']['total_files'] ) - $failed_item_files;
-				// Update settings
-				$tracking_db->update_option( 'migrate_settings', $mig_settings );
-				// Update total files
-				$totalFiles = (int) $tracking_db->db_get_option( 'total_files', '0' );
-				if ( $failed_item_files < $totalFiles ) {
-					$tracking_db->update_option( 'total_files', $totalFiles - $failed_item_files );
-				}
-			}
-			$message = 'Inventory';
-		}
-	} else {
-		// Update inventory sent files
-		$tracking_db->update(
-			'iwp_files_sent',
-			array( 'sent' => '1' ),
-			array(
-				'file_type'     => 'inventory',
-				'sent_filename' => $slug,
-			)
-		);
-		$message = empty( $_POST['item_type'] ) ? 'Plugin or theme' : ucfirst( iwp_sanitize_key( $_POST['item_type'] ) );
-	}
-
-	$message = $message . '' . $slug . ' installation report sent';
-	header( 'x-iwp-status: true' );
-	header( 'x-iwp-message: ' . $message );
-	die();
-}
-
-
-if ( isset( $_REQUEST['serve_type'] ) && 'unmark_sent_files' === $_REQUEST['serve_type'] ) {
-
-	$sent_filename = isset( $_POST['sent_filename'] ) ? $_POST['sent_filename'] : '';
-	$checksum      = isset( $_POST['checksum'] ) ? $_POST['checksum'] : '';
-
-	if ( empty( $sent_filename ) ) {
-		header( 'x-iwp-status: false' );
-		header( 'x-iwp-message: Empty zip(sent_filename) provided, Received the name as: ' . $sent_filename );
-		die();
-	}
-
-	if ( empty( $checksum ) ) {
-		header( 'x-iwp-status: false' );
-		header( 'x-iwp-message: Empty zip(checksum) provided, Received checksum: ' . $checksum );
-		die();
-	}
-
-	$update_response = $tracking_db->update( 'iwp_files_sent', array( 'sent' => '0' ), array( 'checksum' => "'$checksum'" ) );
-
-	if ( ! $update_response ) {
-		header( 'x-iwp-status: false' );
-		header( 'x-iwp-message: Could not reset the sent status for: ' . $sent_filename . ' with checksum: ' . $checksum );
-		die();
-	}
-
-	header( 'x-iwp-status: true' );
-	header( 'x-iwp-message: Reset the sent status for: ' . $sent_filename . ' with checksum: ' . $checksum );
-	die();
-}
-
-
 if ( isset( $_REQUEST['serve_type'] ) && 'db' === $_REQUEST['serve_type'] ) {
 
 	$migrate_settings = $tracking_db->get_option( 'migrate_settings' );
@@ -483,7 +708,7 @@ if ( isset( $_REQUEST['serve_type'] ) && 'db' === $_REQUEST['serve_type'] ) {
 
 	$excluded_tables       = isset( $migrate_settings['excluded_tables'] ) ? $migrate_settings['excluded_tables'] : array();
 	$excluded_tables_rows  = isset( $migrate_settings['excluded_tables_rows'] ) ? $migrate_settings['excluded_tables_rows'] : array();
-	$total_tracking_tables = (int) $tracking_db->query_count( 'iwp_db_sent' );
+	$total_tracking_tables = $tracking_db->query_count( 'iwp_db_sent' );
 
 	// Skip our files sent table
 	if ( ! in_array( 'iwp_files_sent', $excluded_tables ) ) {
@@ -618,7 +843,7 @@ if ( isset( $_REQUEST['serve_type'] ) && 'db' === $_REQUEST['serve_type'] ) {
 		$tracking_db->update( 'iwp_db_sent', array( 'completed' => '1' ), array( 'table_name_hash' => hash( 'sha256', $curr_table_name ) ) );
 	}
 
-	$completed_tables   = (int) $tracking_db->query_count( 'iwp_db_sent', array( 'completed' => '1' ) );
+	$completed_tables   = $tracking_db->query_count( 'iwp_db_sent', array( 'completed' => '1' ) );
 	$tracking_progress  = $completed_tables === 0 || $total_tracking_tables === 0 ? 0 : number_format( ( $completed_tables * 100 ) / $total_tracking_tables, 2, '.', '' );
 	$row_based_progress = number_format( $finished_total / $rows_total_all * 100, 2, '.', '' );
 	$avg_progress       = round( ( (float) $row_based_progress + (float) $tracking_progress ) / 2 );

@@ -20,8 +20,6 @@
  * @author     instawp team
  */
 
-use InstaWP\Connect\Helpers\Option;
-
 if ( ! defined( 'INSTAWP_PLUGIN_DIR' ) ) {
 	die;
 }
@@ -53,18 +51,14 @@ class InstaWP_Admin {
 		$this->plugin_name = $plugin_name;
 		$this->version     = $version;
 
-		if ( ! is_multisite() || is_main_site() ) {
-			add_action( 'admin_menu', array( $this, 'add_migrate_plugin_menu_items' ) );
-		}
-
-		// For Displaying Migrate and Go Live
+		add_action( 'admin_menu', array( $this, 'add_migrate_plugin_menu_items' ) );
 		add_action( 'admin_bar_menu', array( $this, 'add_admin_bar_button' ), 100 );
 
 		if ( defined( 'INSTAWP_CONNECT_MODE' ) && in_array( INSTAWP_CONNECT_MODE, array( 'WAAS_GO_LIVE', 'TEMPLATE_MIGRATE' ) ) ) {
 			add_filter( 'all_plugins', array( $this, 'handle_instawp_plugin_display' ) );
 		}
 
-		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ), 99 );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
 	}
 
 	public function add_action_links( $links ) {
@@ -73,7 +67,7 @@ class InstaWP_Admin {
 		}
 
 		$action_links = array(
-			sprintf( '<a href="%s">%s</a>', esc_url( admin_url( 'tools.php?page=instawp&step=1' ) ), instawp()->is_staging ? esc_html__( 'Settings', 'instawp-connect' ) : esc_html__( 'Create Staging', 'instawp-connect' ) ),
+			sprintf( '<a href="%s">%s</a>', esc_url( admin_url( 'tools.php?page=instawp' ) ), instawp()->is_staging ? esc_html__( 'Settings', 'instawp-connect' ) : esc_html__( 'Create Staging', 'instawp-connect' ) ),
 		);
 
 		return array_merge( $action_links, $links );
@@ -127,10 +121,7 @@ class InstaWP_Admin {
 			add_menu_page(
 				esc_html__( 'InstaWP - Migrate', 'instawp-connect' ),
 				esc_html__( 'InstaWP - Migrate', 'instawp-connect' ),
-				'manage_options',
-				'instawp-template-migrate',
-				array( $this, 'render_template_migrate_page' ),
-				2
+				'manage_options', 'instawp-template-migrate', array( $this, 'render_template_migrate_page' ), 2
 			);
 			remove_menu_page( 'instawp-template-migrate' );
 
@@ -142,27 +133,19 @@ class InstaWP_Admin {
 			return;
 		}
 
-		$selected_users = Option::get_option( 'instawp_hide_plugin_to_users' );
-		if ( ! empty( $selected_users ) && is_array( $selected_users ) && in_array( get_current_user_id(), $selected_users ) ) {
-			return;
-		}
-
 		add_management_page(
 			defined( 'IWP_PLUGIN_NAME' ) ? IWP_PLUGIN_NAME : esc_html__( 'InstaWP', 'instawp-connect' ),
 			defined( 'IWP_PLUGIN_NAME' ) ? IWP_PLUGIN_NAME : esc_html__( 'InstaWP', 'instawp-connect' ),
-			InstaWP_Setting::get_allowed_role(),
-			'instawp',
-			array( $this, 'render_migrate_page' ),
-			1
+			InstaWP_Setting::get_allowed_role(), 'instawp', array( $this, 'render_migrate_page' ), 1
 		);
 	}
 
 	function render_template_migrate_page() {
-		include INSTAWP_PLUGIN_DIR . 'migrate/templates/main-migrate.php';
+		include INSTAWP_PLUGIN_DIR . '/migrate/templates/main-migrate.php';
 	}
 
 	function render_migrate_page() {
-		include INSTAWP_PLUGIN_DIR . 'migrate/templates/main.php';
+		include INSTAWP_PLUGIN_DIR . '/migrate/templates/main.php';
 	}
 
 	public function enqueue_scripts() {
