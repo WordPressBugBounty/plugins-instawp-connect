@@ -57,6 +57,29 @@
         return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     }
 
+    // Simple toast notifications (top-right)
+    let instawpToastContainer = null;
+    let ensureToastContainer = () => {
+        if (!instawpToastContainer) {
+            instawpToastContainer = $('<div class="instawp-toast-container"></div>')
+                .css({ position: 'fixed', top: '16px', right: '16px', zIndex: 99999, display: 'flex', flexDirection: 'column', gap: '8px' });
+            $('body').append(instawpToastContainer);
+        }
+        return instawpToastContainer;
+    }
+
+    let showInstawpToast = (message, type = 'success') => {
+        let container = ensureToastContainer();
+        let bg = (type === 'success') ? '#059669' : '#DC2626'; // emerald-600 / red-600
+        let toast = $('<div class="instawp-toast"></div>')
+            .css({ background: bg, color: '#fff', padding: '10px 14px', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)' })
+            .text(message || (type === 'success' ? 'Success. Settings updated.' : 'Error. Please try again.'));
+        container.append(toast);
+        setTimeout(function () {
+            toast.fadeOut(300, function () { $(this).remove(); });
+        }, 3000);
+    }
+
     let elapsedInterval = null;
 
     let updateTimer = (startTime) => {
@@ -73,16 +96,16 @@
         const seconds = Math.floor((timeDifference % (1000 * 60)) / 1000);
 
         let string = '';
-        if ( seconds >= 0) {
+        if (seconds >= 0) {
             string = seconds + 's';
         }
-        if ( minutes > 0) {
+        if (minutes > 0) {
             string = minutes + 'm ' + string;
         }
-        if ( hours > 0) {
+        if (hours > 0) {
             string = hours + 'h ' + string;
         }
-        if ( days > 0) {
+        if (days > 0) {
             string = days + 'd ' + string;
         }
         $(document).find('#visibility-timer').text(string);
@@ -90,136 +113,139 @@
 
     let migrationSteps = {};
     $.each(plugin_object.trans.stages, function (stage_key, stage_value) {
-        migrationSteps[ stage_key ] = stage_value;
+        migrationSteps[stage_key] = stage_value;
     });
 
     let instawp_migrate_progress = () => {
 
-            let create_container = $('.instawp-wrap .nav-item-content.create'),
-                el_bar_files = create_container.find('.instawp-progress-files'),
-                el_bar_db = create_container.find('.instawp-progress-db'),
-                el_visibility_box = create_container.find('#visibility-box'),
-                el_bar_restore = create_container.find('.instawp-progress-restore'),
-                el_migration_loader = create_container.find('.instawp-migration-loader'),
-                el_migration_progress_wrap = create_container.find('.migration-running'),
-                el_site_detail_wrap = create_container.find('.migration-completed'),
-                el_migration_error_wrap = create_container.find('.migration-error'),
-                el_migration_error_message = el_migration_error_wrap.find('.error-message'),
-                el_migration_download_log = el_migration_error_wrap.find('.instawp-download-log'),
-                el_screen_buttons = create_container.find('.screen-buttons'),
-                el_screen_buttons_last = create_container.find('.screen-buttons-last'),
-                el_stage_wrapper = create_container.find('.instawp-progress-stage');
+        let create_container = $('.instawp-wrap .nav-item-content.create'),
+            el_bar_files = create_container.find('.instawp-progress-files'),
+            el_bar_db = create_container.find('.instawp-progress-db'),
+            el_visibility_box = create_container.find('#visibility-box'),
+            el_bar_restore = create_container.find('.instawp-progress-restore'),
+            el_migration_loader = create_container.find('.instawp-migration-loader'),
+            el_migration_progress_wrap = create_container.find('.migration-running'),
+            el_site_detail_wrap = create_container.find('.migration-completed'),
+            el_migration_error_wrap = create_container.find('.migration-error'),
+            el_migration_error_message = el_migration_error_wrap.find('.error-message'),
+            el_migration_download_log = el_migration_error_wrap.find('.instawp-download-log'),
+            el_screen_buttons = create_container.find('.screen-buttons'),
+            el_screen_buttons_last = create_container.find('.screen-buttons-last'),
+            el_stage_wrapper = create_container.find('.instawp-progress-stage');
 
-            if (create_container.hasClasses('doing-ajax completed')) {
-                return;
-            }
+        if (create_container.hasClasses('doing-ajax completed')) {
+            return;
+        }
 
-            $.ajax({
-                type: 'POST',
-                url: plugin_object.ajax_url,
-                context: this,
-                beforeSend: function () {
-                    create_container.addClass('doing-ajax');
-                },
-                complete: function () {
-                    create_container.removeClass('doing-ajax');
-                },
-                data: {
-                    'action': 'instawp_migrate_progress',
-                    'visible': !$(document).find('#visibility-box-area').hasClass('hidden'),
-                    'security': plugin_object.security,
-                },
-                success: function (response) {
-                    if (response.success) {
-                        let progress_files = response.data.progress_files ? response.data.progress_files : 0,
-                            progress_db = response.data.progress_db ? response.data.progress_db : 0,
-                            progress_restore = response.data.progress_restore ? response.data.progress_restore : 0,
-                            progress_stages = response.data.stage,
-                            failed_message = response.data.failed_message,
-                            processed_files = response.data.processed_files ? response.data.processed_files : [],
-                            processed_db = response.data.processed_db ? response.data.processed_db : [],
-                            startTime = response.data.started_at ?? null,
-                            current_stage = 'processing',
-                            stage_migration_finished = false;
+        $.ajax({
+            type: 'POST',
+            url: plugin_object.ajax_url,
+            context: this,
+            beforeSend: function () {
+                create_container.addClass('doing-ajax');
+            },
+            complete: function () {
+                create_container.removeClass('doing-ajax');
+            },
+            data: {
+                'action': 'instawp_migrate_progress',
+                'visible': !$(document).find('#visibility-box-area').hasClass('hidden'),
+                'security': plugin_object.security,
+            },
+            success: function (response) {
+                if (response.success) {
+                    let progress_files = response.data.progress_files ? response.data.progress_files : 0,
+                        progress_db = response.data.progress_db ? response.data.progress_db : 0,
+                        progress_restore = response.data.progress_restore ? response.data.progress_restore : 0,
+                        progress_stages = response.data.stage,
+                        failed_message = response.data.failed_message,
+                        processed_files = response.data.processed_files ? response.data.processed_files : [],
+                        processed_db = response.data.processed_db ? response.data.processed_db : [],
+                        startTime = response.data.started_at ?? null,
+                        current_stage = 'processing',
+                        stage_migration_finished = false;
 
-                        if(!elapsedInterval) {
-                            elapsedInterval = setInterval(()=> {
-                                updateTimer(startTime)
-                            }, 1000);
-                        }
+                    if (!elapsedInterval) {
+                        elapsedInterval = setInterval(() => {
+                            updateTimer(startTime)
+                        }, 1000);
+                    }
 
-                        el_bar_files.find('.instawp-progress-bar').css('width', progress_files + '%');
-                        el_bar_files.find('.progress-text').text(progress_files + '%');
+                    el_bar_files.find('.instawp-progress-bar').css('width', progress_files + '%');
+                    el_bar_files.find('.progress-text').text(progress_files + '%');
 
-                        el_bar_db.find('.instawp-progress-bar').css('width', progress_db + '%');
-                        el_bar_db.find('.progress-text').text(progress_db + '%');
+                    el_bar_db.find('.instawp-progress-bar').css('width', progress_db + '%');
+                    el_bar_db.find('.progress-text').text(progress_db + '%');
 
-                        el_bar_restore.find('.instawp-progress-bar').css('width', progress_restore + '%');
-                        el_bar_restore.find('.progress-text').text(progress_restore + '%');
+                    el_bar_restore.find('.instawp-progress-bar').css('width', progress_restore + '%');
+                    el_bar_restore.find('.progress-text').text(progress_restore + '%');
 
-                        $.each(progress_stages, function (stage_key, stage_value) {
-                            if (stage_value === true) {
-                                if (stage_key === 'migration-finished') {
-                                    stage_migration_finished = true;
-                                }
-                                current_stage = stage_key;
-                                //el_stage_wrapper.find('.stage-' + stage_key).find('.stage-status').addClass('active');
+                    $.each(progress_stages, function (stage_key, stage_value) {
+                        if (stage_value === true) {
+                            if (stage_key === 'migration-finished') {
+                                stage_migration_finished = true;
                             }
-                        });
-
-                        if (Object.keys(migrationSteps).includes(current_stage)) {
-                            el_visibility_box.find('#visibility-content-area').append('<div class="visibility-content-item flex gap-3 items-center hover:bg-zinc-800 hover:rounded-lg py-1.5 px-2.5 "><span class="text-gray-100 min-w-36">' + response.data.timestamp + '</span><span class="text-gray-100 break-all font-medium">' + migrationSteps[ current_stage ] + '</span></div>');
-                            delete migrationSteps[ current_stage ];
+                            current_stage = stage_key;
+                            //el_stage_wrapper.find('.stage-' + stage_key).find('.stage-status').addClass('active');
                         }
+                    });
 
-                        let current_stage_item = el_visibility_box.find('.stage-' + current_stage);
-                        if(current_stage_item.hasClass('hidden')) {
-                            el_visibility_box.find('.stage').addClass('hidden');
-                            current_stage_item.removeClass('hidden');
+                    if (Object.keys(migrationSteps).includes(current_stage)) {
+                        el_visibility_box.find('#visibility-content-area').append('<div class="visibility-content-item flex gap-3 items-center hover:bg-zinc-800 hover:rounded-lg py-1.5 px-2.5 "><span class="text-gray-100 min-w-36">' + response.data.timestamp + '</span><span class="text-gray-100 break-all font-medium">' + migrationSteps[current_stage] + '</span></div>');
+                        delete migrationSteps[current_stage];
+                    }
+
+                    let current_stage_item = el_visibility_box.find('.stage-' + current_stage);
+                    if (current_stage_item.hasClass('hidden')) {
+                        el_visibility_box.find('.stage').addClass('hidden');
+                        current_stage_item.removeClass('hidden');
+                    }
+
+                    let content_html = '';
+
+                    $.each(processed_files, function (key, value) {
+                        content_html += '<div class="visibility-content-item flex gap-3 items-center hover:bg-zinc-800 hover:rounded-lg py-1.5 px-2.5 group ' + value.status + '">';
+                        content_html += '<span class="text-gray-100 min-w-36">' + response.data.timestamp + '</span><span class="text-gray-100 break-all group-[.sent]:text-emerald-300 group-[.failed]:text-rose-500 group-[.skipped]:text-yellow-300 group-[.invalid]:text-red-300">' + value.filepath + ' (' + value.size + ')';
+                        if (value.status === 'in-progress') {
+                            content_html += ' <span class="hidden group-hover:inline-block cursor-pointer ml-2 px-2 py-1 text-xs rounded-lg border border-zinc-700 text-rose-500 instawp-skip-item" data-type="file" data-item="' + value.id + '">' + plugin_object.trans.skip_item_txt + '</span>';
                         }
+                        content_html += '</span></div>';
+                    });
 
-                        let content_html = '';
-
-                        $.each(processed_files, function (key, value) {
-                            content_html += '<div class="visibility-content-item flex gap-3 items-center hover:bg-zinc-800 hover:rounded-lg py-1.5 px-2.5 group ' + value.status + '">';
-                            content_html += '<span class="text-gray-100 min-w-36">' + response.data.timestamp + '</span><span class="text-gray-100 break-all group-[.sent]:text-emerald-300 group-[.failed]:text-rose-500 group-[.skipped]:text-yellow-300 group-[.invalid]:text-red-300">' + value.filepath + ' (' + value.size + ')';
-                            if(value.status === 'in-progress') {
-                                content_html += ' <span class="hidden group-hover:inline-block cursor-pointer ml-2 px-2 py-1 text-xs rounded-lg border border-zinc-700 text-rose-500 instawp-skip-item" data-type="file" data-item="'+ value.id + '">' + plugin_object.trans.skip_item_txt + '</span>';
-                            }
-                            content_html += '</span></div>';
-                        });
-
-                        $.each(processed_db, function (key, value) {
-                            content_html += '<div class="visibility-content-item flex gap-3 items-center hover:bg-zinc-800 hover:rounded-lg py-1.5 px-2.5 group ' + value.status + '">';
-                            content_html += '<span class="text-gray-100 min-w-36">' + response.data.timestamp + '</span><span class="text-gray-100 break-all group-[.sent]:text-emerald-300 group-[.failed]:text-rose-500 group-[.skipped]:text-yellow-300 group-[.invalid]:text-red-300">' + value.table_name + ' - ' + value.offset + ' / ' + value.rows_total + ' rows';
-                            if(value.status === 'in-progress') {
-                                content_html += ' <span class="hidden group-hover:inline-block cursor-pointer ml-2 px-2 py-1 text-xs rounded-lg border border-zinc-700 text-rose-500 instawp-skip-item" data-type="db" data-item="'+ value.table_name + '">' + plugin_object.trans.skip_item_txt + '</span>';
-                            }
-                            content_html += '</span></div>';
-                        });
-
-                        if(content_html) {
-                            el_visibility_box.find('#visibility-content-area').append(content_html);
-
-                            let el_box_area = el_visibility_box.find('#visibility-content-area');
-                            el_box_area.animate({
-                                scrollTop: el_box_area[0].scrollHeight
-                            }, 500);
+                    $.each(processed_db, function (key, value) {
+                        content_html += '<div class="visibility-content-item flex gap-3 items-center hover:bg-zinc-800 hover:rounded-lg py-1.5 px-2.5 group ' + value.status + '">';
+                        content_html += '<span class="text-gray-100 min-w-36">' + response.data.timestamp + '</span><span class="text-gray-100 break-all group-[.sent]:text-emerald-300 group-[.failed]:text-rose-500 group-[.skipped]:text-yellow-300 group-[.invalid]:text-red-300">' + value.table_name + ' - ' + value.offset + ' / ' + value.rows_total + ' rows';
+                        if (value.status === 'in-progress') {
+                            content_html += ' <span class="hidden group-hover:inline-block cursor-pointer ml-2 px-2 py-1 text-xs rounded-lg border border-zinc-700 text-rose-500 instawp-skip-item" data-type="db" data-item="' + value.table_name + '">' + plugin_object.trans.skip_item_txt + '</span>';
                         }
+                        content_html += '</span></div>';
+                    });
 
-                        // Completed
-                        if (stage_migration_finished === true) {
-                            create_container.removeClass('loading').addClass('completed');
-                            el_visibility_box.find('#visibility-box, .full-screen-btn').addClass('hidden');
-                            clearInterval(create_container.attr('interval-id'));
+                    if (content_html) {
+                        el_visibility_box.find('#visibility-content-area').append(content_html);
 
-                            if (
-                                typeof response.data.dest_wp.url !== 'undefined' &&
-                                typeof response.data.dest_wp.username !== 'undefined' &&
-                                typeof response.data.dest_wp.password !== 'undefined' &&
-                                typeof response.data.dest_wp.auto_login_url !== 'undefined'
-                            ) {
+                        let el_box_area = el_visibility_box.find('#visibility-content-area');
+                        el_box_area.animate({
+                            scrollTop: el_box_area[0].scrollHeight
+                        }, 500);
+                    }
 
+                    // Completed
+                    if (stage_migration_finished === true) {
+                        create_container.removeClass('loading').addClass('completed');
+                        el_visibility_box.find('#visibility-box, .full-screen-btn').addClass('hidden');
+                        clearInterval(create_container.attr('interval-id'));
+
+                        if (
+                            typeof response.data.dest_wp.url !== 'undefined' &&
+                            typeof response.data.dest_wp.username !== 'undefined' &&
+                            typeof response.data.dest_wp.password !== 'undefined' &&
+                            typeof response.data.dest_wp.auto_login_url !== 'undefined'
+                        ) {
+
+                            let delay = (typeof response.data.delay_success !== 'undefined' && response.data.delay_success !== null) ? parseInt(response.data.delay_success) : 1;
+                            delay = 0 === delay ? 1 : delay * 1000;
+                            setTimeout(() => {
                                 el_migration_progress_wrap.addClass('hidden');
                                 el_site_detail_wrap.removeClass('hidden');
                                 el_migration_loader.text(el_migration_loader.data('complete-text'));
@@ -235,34 +261,35 @@
                                 // screen-buttons-last
                                 el_screen_buttons.addClass('hidden');
                                 el_screen_buttons_last.removeClass('hidden');
-                            }
+                            }, delay);
                         }
-                    } else {
-                        create_container.removeClass('loading').addClass('completed');
-                        clearInterval(create_container.attr('interval-id'));
-
-                        if (response.data.failed_message) {
-                            el_migration_error_message.html(response.data.failed_message);
-                        } else {
-                            el_migration_error_message.html(response.data.message);
-                        }
-
-                        console.log(response);
-
-                        el_migration_download_log.data('migrate-id', response.data.migrate_id);
-                        el_migration_download_log.data('server-logs', response.data.server_logs);
-
-                        el_migration_loader.removeClass('text-primary-900').addClass('text-red-700').text(el_migration_loader.data('error-text'));
-                        el_migration_progress_wrap.addClass('hidden');
-                        el_migration_error_wrap.removeClass('hidden');
-                        el_screen_buttons_last.removeClass('hidden');
                     }
-                },
-                error: function () {
-                    window.location = window.location.href.split("?")[0] + '?page=instawp';
+                } else {
+                    create_container.removeClass('loading').addClass('completed');
+                    clearInterval(create_container.attr('interval-id'));
+
+                    if (response.data.failed_message) {
+                        el_migration_error_message.html(response.data.failed_message);
+                    } else {
+                        el_migration_error_message.html(response.data.message);
+                    }
+
+                    console.log(response);
+
+                    el_migration_download_log.data('migrate-id', response.data.migrate_id);
+                    el_migration_download_log.data('server-logs', response.data.server_logs);
+
+                    el_migration_loader.removeClass('text-primary-900').addClass('text-red-700').text(el_migration_loader.data('error-text'));
+                    el_migration_progress_wrap.addClass('hidden');
+                    el_migration_error_wrap.removeClass('hidden');
+                    el_screen_buttons_last.removeClass('hidden');
                 }
-            });
-        },
+            },
+            error: function () {
+                window.location = window.location.href.split("?")[0] + '?page=instawp';
+            }
+        });
+    },
         instawp_migrate_init = () => {
 
             let create_container = $('.instawp-wrap .nav-item-content.create'),
@@ -295,8 +322,8 @@
                     console.log(response);
 
                     if (response.success) {
-                        if(!elapsedInterval) {
-                            elapsedInterval = setInterval(()=> {
+                        if (!elapsedInterval) {
+                            elapsedInterval = setInterval(() => {
                                 updateTimer(response.data.started_at)
                             }, 1000);
                         }
@@ -306,6 +333,11 @@
                             create_container.find('.instawp-track-migration').attr('href', response.data.tracking_url).removeClass('hidden');
                             create_container.find('.instawp-track-migration-area').removeClass('justify-end').addClass('justify-between');
                         }
+
+                        if (typeof response.data.serve_with_wp !== 'undefined' && response.data.serve_with_wp) {
+                            create_container.find('.notice-serve-with-wp').removeClass('hidden');
+                        }
+
                         create_container.attr('interval-id', setInterval(instawp_migrate_progress, 3000));
                     } else {
                         create_container.removeClass('loading');
@@ -320,8 +352,27 @@
             });
         };
 
-    $(document).on('click', '.instawp-copy-cmd', function () {
+    let popupWindow = null;
+    let intervalChecker = null;
+    let ajaxRequest = null;
+    let progress = 0;
+    let progressInterval;
 
+    $(document).on('click', '.instawp-add-credit-card', function () {
+        $(this).addClass('pointer-events-none');
+        clearInterval(intervalChecker);
+        popupWindow = window.open(plugin_object.api_domain + '/card?utm_source=instawp_connect&utm_medium=wp_plugin&utm_campaign=instawp_connect&source=instawp_connect', '_blank');
+        intervalChecker = setInterval(function () {
+            if (popupWindow && popupWindow.closed) {
+                clearInterval(intervalChecker);
+                $('.payment-method-warning').addClass('hidden');
+                $('.instawp-button-migrate.continue').removeAttr('disabled');
+                $('.instawp-add-credit-card').removeClass('pointer-events-none');
+            }
+        }, 500);
+    });
+
+    $(document).on('click', '.instawp-copy-cmd', function () {
         let inputField = document.createElement('input'),
             el_copy_block = $(this),
             el_copy_text = el_copy_block.find('.copy-text'),
@@ -358,7 +409,7 @@
         let server_logs = $(this).data('server-logs'),
             migrate_id = $(this).data('migrate-id'),
             filename = migrate_id + '-log.txt',
-            blob = new Blob([server_logs], {type: 'text/plain;charset=utf-8;'});
+            blob = new Blob([server_logs], { type: 'text/plain;charset=utf-8;' });
 
         if (window.navigator.msSaveOrOpenBlob) {
             window.navigator.msSaveBlob(blob, filename);
@@ -374,59 +425,165 @@
     });
 
     $(document).on('change', '#instawp-screen', function () {
-
         let create_container = $('.instawp-wrap .nav-item-content.create'),
+            el_screen_buttons = create_container.find('.screen-buttons'),
             el_btn_back = create_container.find('.instawp-button-migrate.back'),
             el_btn_continue = create_container.find('.instawp-button-migrate.continue'),
             el_instawp_screen = create_container.find('#instawp-screen'),
             screen_current = parseInt(el_instawp_screen.val()),
             el_screen_nav_items = create_container.find('.screen-nav-items > li'),
+            el_screen_loading_request = el_screen_buttons.find('p.loading-request'),
+            el_staging_plan_container = create_container.find('.staging-plan-container'),
+            el_payment_method_warning = create_container.find('.payment-method-warning'),
+            el_custom_plan_warning = create_container.find('.custom-plan-warning'),
             el_screen = create_container.find('.screen');
+
+        el_screen_buttons.removeClass('hidden');
 
         // Adjusting Back/Continue Buttons
         if (screen_current <= 1) {
             el_btn_back.addClass('hidden');
         } else if (screen_current >= 5) {
+            el_screen_buttons.addClass('hidden');
             el_btn_back.addClass('hidden');
             el_btn_continue.addClass('hidden');
         } else {
             el_btn_back.removeClass('hidden');
             el_btn_continue.removeClass('hidden');
         }
+        clearInterval(progressInterval);
 
         if (screen_current === 4) {
-            el_btn_continue.text('Create Staging');
+            el_btn_continue.text(plugin_object.trans.create_staging_txt);
+            if (!create_container.find('.files-size-container .total-size').hasClass('loaded')) {
+                ajaxRequest = $.ajax({
+                    type: 'POST',
+                    url: plugin_object.ajax_url,
+                    context: this,
+                    beforeSend: function () {
+                        el_btn_continue.attr('disabled', true);
+                        el_screen_loading_request.removeClass('hidden');
+                        //el_btn_back.attr('disabled', true);
+
+                        progress = 0;
+                        create_container.find('.files-size-container .total-size').text(plugin_object.trans.calculating_size_txt + ' (0%)');
+
+                        progressInterval = setInterval(() => {
+                            if (progress < 90) {
+                                progress += Math.floor(Math.random() * 5) + 2; // 2% to 6%
+                                progress = Math.min(progress, 90);
+                            } else if (progress < 99) {
+                                progress += Math.random() < 0.3 ? 1 : 0; // Very slow increase
+                                progress = Math.min(progress, 99);
+                            }
+                            create_container.find('.files-size-container .total-size').text(plugin_object.trans.calculating_size_txt + ' (' + progress + '%)');
+                        }, 300);
+                    },
+                    data: {
+                        'action': 'instawp_get_site_plans',
+                        'settings': create_container.serialize(),
+                        'security': plugin_object.security,
+                    },
+                    success: function (response) {
+                        clearInterval(progressInterval);
+                        create_container.find('.files-size-container .total-size').text(plugin_object.trans.calculating_size_txt + ' (100%)');
+                        //el_btn_back.removeAttr('disabled');
+
+                        setTimeout(function () {
+                            create_container.find('.files-size-container .total-size').html(response.data.total_size_formatted).addClass('loaded');
+                            el_screen_loading_request.addClass('hidden');
+
+                            if (response.success && response.data && !response.data.is_legacy) {
+                                el_staging_plan_container.removeClass('hidden').html(response.data.content);
+                                const firstEnabledRadio = create_container.find('.staging-plans input[type="radio"]:not(:disabled)').first();
+                                if (firstEnabledRadio.length) {
+                                    firstEnabledRadio.prop('checked', true);
+
+                                    if (response.data.has_payment_method) {
+                                        el_payment_method_warning.addClass('hidden');
+                                        el_btn_continue.removeAttr('disabled');
+                                    } else {
+                                        el_payment_method_warning.removeClass('hidden');
+                                    }
+                                } else {
+                                    el_custom_plan_warning.removeClass('hidden');
+                                    el_custom_plan_warning.find('.disk-quota-value').html(response.data.total_size_formatted);
+                                }
+                            } else {
+                                el_btn_continue.removeAttr('disabled');
+                            }
+                        }, 500);
+                    }
+                });
+            } else {
+                if (!el_custom_plan_warning.hasClass('hidden')) {
+                    el_btn_continue.attr('disabled', true);
+                }
+            }
         } else {
-            el_btn_continue.text('Next Step');
+            if (ajaxRequest && ajaxRequest.readyState !== 4) {
+                ajaxRequest.abort();
+                ajaxRequest = null;
+                create_container.find('.files-size-container .total-size').text(plugin_object.trans.calculating_size_txt + ' (0%)');
+            }
+            el_btn_continue.text(plugin_object.trans.next_step_txt).removeAttr('disabled');
+            el_screen_loading_request.addClass('hidden');
+            el_screen_buttons.removeClass('justify-end').addClass('justify-between');
         }
 
         // Changing Screen Nav
+        // el_screen_nav_items.each(function (index) {
+        //     let el_screen_nav_current = $(this),
+        //         el_screen_nav_current_inner = el_screen_nav_current.find('.screen-nav'),
+        //         el_screen_nav_current_line = el_screen_nav_current.find('.screen-nav .screen-nav-line');
+
+        //     if (index < screen_current) {
+        //         el_screen_nav_current_inner.addClass('active');
+        //     } else {
+        //         el_screen_nav_current_inner.removeClass('active');
+        //     }
+
+        //     if (index < (screen_current - 1)) {
+        //         el_screen_nav_current_line.addClass('bg-primary-900').removeClass('bg-gray-200');
+        //     } else {
+        //         el_screen_nav_current_line.addClass('bg-gray-200').removeClass('bg-primary-900');
+        //     }
+        // });
+
+        // Changing Screen
+        // el_screen.removeClass('active');
+        // el_screen.parent().find('.screen-' + screen_current).addClass('active');
+
+        // Update screen navigation items
         el_screen_nav_items.each(function (index) {
             let el_screen_nav_current = $(this),
                 el_screen_nav_current_inner = el_screen_nav_current.find('.screen-nav'),
                 el_screen_nav_current_line = el_screen_nav_current.find('.screen-nav .screen-nav-line');
 
-            if (index < screen_current) {
-                el_screen_nav_current_inner.addClass('active');
-            } else {
-                el_screen_nav_current_inner.removeClass('active');
-            }
+            // Toggle 'active' for nav
+            el_screen_nav_current_inner.toggleClass('active', index < screen_current);
 
-            if (index < (screen_current - 1)) {
-                el_screen_nav_current_line.addClass('bg-primary-900').removeClass('bg-gray-200');
-            } else {
-                el_screen_nav_current_line.addClass('bg-gray-200').removeClass('bg-primary-900');
-            }
+            // Update line colors
+            el_screen_nav_current_line
+                .toggleClass('bg-primary-900', index < (screen_current - 1))
+                .toggleClass('bg-gray-200', index >= (screen_current - 1));
         });
 
-        // Changing Screen
-        el_screen.removeClass('active');
-        el_screen.parent().find('.screen-' + screen_current).addClass('active');
+        // Efficient screen switch (avoid flicker)
+        let current_active_screen = el_screen.filter('.active'),
+            new_active_screen = el_screen.parent().find('.screen-' + screen_current);
+
+        if (!new_active_screen.hasClass('active')) {
+            current_active_screen.removeClass('active');
+            new_active_screen.addClass('active');
+        }
 
         // Initiating Migration
         if (screen_current === 5) {
             instawp_migrate_init();
         }
+
+        $(document).trigger('instawp_migrate_screen_change', [screen_current]);
     });
 
     $(document).on('change', '.instawp-wrap .instawp-option-selector', function () {
@@ -446,7 +603,13 @@
             el_option_selector_wrap.removeClass('border-grayCust-350').addClass('card-active border-primary-900');
 
             // For Preview Screens
-            el_selected_staging_options.append('<div class="' + option_id + ' border-primary-900 border card-active py-2 px-4 text-grayCust-700 text-xs font-medium rounded-lg">' + option_label + '</div>');
+            el_selected_staging_options.append('<div class="' + option_id + ' border-primary-900 border card-active py-2 px-4 text-xs font-medium rounded-lg">' + option_label + '</div>');
+        }
+
+        if (el_selected_staging_options.children().length > 0) {
+            el_selected_staging_options.parent().removeClass('hidden');
+        } else {
+            el_selected_staging_options.parent().addClass('hidden');
         }
     });
 
@@ -454,6 +617,11 @@
         $(document).find('.connected').addClass('hidden');
         $(document).find('.create-staging').removeClass('hidden');
     });
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('step') == 1) {
+        $(document).find('.create-staging-btn').click();
+    }
 
     $(document).on('click', '.browse-staging-btn, .instawp-show-staging-sites', function (e) {
         $(document).find('.nav-items > #sites > a').trigger('click');
@@ -536,6 +704,7 @@
             }
         }
     });
+    $(document).find('.instawp-wrap .instawp-staging-type:first').trigger('click');
 
     $(document).on('click', '.instawp-wrap .instawp-button-migrate', function () {
 
@@ -548,6 +717,7 @@
             el_confirmation_preview = create_container.find('.confirmation-preview'),
             el_confirmation_warning = create_container.find('.confirmation-warning'),
             el_instawp_screen = create_container.find('#instawp-screen'),
+            el_payment_method_warning = create_container.find('.payment-method-warning'),
             screen_current = parseInt(el_instawp_screen.val()),
             screen_next = screen_current + parseInt(screen_increment),
             instawp_migrate_type = $('input[name="migrate_settings[type]"]:checked').val();
@@ -573,6 +743,9 @@
             el_screen_buttons.removeClass('justify-between').addClass('justify-end');
             el_instawp_site_name.addClass('hidden');
             el_screen_doing_request.addClass('loading');
+            el_payment_method_warning.addClass('hidden');
+            el_btn_migrate.attr('disabled', true);
+            create_container.find('.instawp-button-migrate.back').attr('disabled', true);
 
             $.ajax({
                 type: 'POST',
@@ -584,21 +757,59 @@
                     'security': plugin_object.security,
                 },
                 success: function (response) {
-
                     if (response.success) {
                         el_screen_doing_request.removeClass('loading');
                         el_instawp_screen.val(screen_next).trigger('change');
                     } else {
-                        create_container.addClass('warning');
+                        //create_container.addClass('warning');
+                        create_container.find('.instawp-button-migrate.back').removeAttr('disabled');
+
+                        if (response.data.issue_for === 'storage_limit_exceeded' || response.data.issue_for === 'no_payment_method' || response.data.issue_for === 'free_site_limit_exceeded' || response.data.issue_for === 'no_plan_found') {
+                            el_screen_buttons.addClass('justify-between').removeClass('justify-end');
+                            el_instawp_site_name.removeClass('hidden');
+                            el_screen_doing_request.removeClass('loading');
+
+                            if (response.data.issue_for === 'free_site_limit_exceeded') {
+                                alert('Free limit reached');
+                                location.reload();
+                            } else if (response.data.issue_for === 'storage_limit_exceeded') {
+                                alert('Storage limit exceeded');
+                                location.reload();
+                            } else if (response.data.issue_for === 'no_plan_found') {
+                                alert('No plan found');
+                                location.reload();
+                            } else {
+                                el_payment_method_warning.removeClass('hidden');
+                            }
+                            return;
+                        }
+
+                        el_btn_migrate.removeAttr('disabled');
                         el_confirmation_preview.addClass('hidden');
                         el_confirmation_warning.removeClass('hidden');
                         el_confirmation_warning.find('a').attr('href', response.data.button_url).html(response.data.button_text);
+
+                        // Error found other than disk limit
+                        if (undefined !== response.data.error && true === response.data.error && undefined !== response.data.http_code) {
+                            // Update warning title
+                            el_confirmation_warning.find('.warning-title').html(response.data.title);
+                            // Update warning sub title
+                            let subtitle = el_confirmation_warning.find('.warning-subtitle');
+                            subtitle.html(response.data.message + '<br> HTTP Error: ' + response.data.http_code);
+                            // Remove margin 
+                            subtitle.removeClass('mb-2');
+                            // Add margin bottom
+                            subtitle.addClass('mb-4');
+                            // Remove details as we don't have such details
+                            el_confirmation_warning.find('.warning-details').remove();
+                            return true;
+                        }
 
                         el_confirmation_warning.find('.remaining-site').html(response.data.remaining_site);
                         el_confirmation_warning.find('.user-allow-site').html(response.data.userAllowSite);
                         el_confirmation_warning.find('.remaining-disk-space').html(response.data.remaining_disk_space);
                         el_confirmation_warning.find('.user-allow-disk-space').html(response.data.userAllowDiskSpace);
-                        el_confirmation_warning.find('.require-disk-space').html(response.data.require_disk_space);
+                        el_confirmation_warning.find('.require-disk-space').html(response.data.required_disk_space);
 
                         if (response.data.issue_for === 'remaining_site') {
                             el_confirmation_warning.find('.remaining-site').parent().removeClass('text-primary-900').addClass('text-red-500');
@@ -700,7 +911,7 @@
 
         if (confirm('Do you really want to abort the migration?')) {
             clearInterval(create_container.attr('interval-id'));
-            window.location = window.location.href.split("?")[0] + '?page=instawp&clear=all';
+            window.location = window.location.href.split("?")[0] + '?page=instawp&clear=all&iwp_nonce=' + plugin_object.security;
         }
     });
 
@@ -734,13 +945,12 @@
         });
     });
 
-    $(document).on('submit', '.settings .instawp-form', function (e) {
+    $(document).on('submit', '.settings .instawp-form, .developer .instawp-form', function (e) {
 
         e.preventDefault();
 
-        let this_form = $(this), this_form_data = this_form.serialize(), this_form_response = this_form.find('.instawp-form-response');
+        let this_form = $(this), this_form_data = this_form.serialize();
 
-        this_form_response.html('');
         this_form.addClass('loading');
 
         $.ajax({
@@ -752,15 +962,11 @@
                     this_form.removeClass('loading');
 
                     if (response.success) {
-                        this_form_response.addClass('success').html(response.data.message);
+                        showInstawpToast(response.data.message, 'success');
                     } else {
-                        this_form_response.addClass('error').html(response.data.message);
+                        showInstawpToast(response.data.message, 'error');
                     }
                 }, 1000);
-
-                setTimeout(function () {
-                    this_form_response.removeClass('success error').html('');
-                }, 3000);
             }
         });
 
@@ -890,6 +1096,11 @@
         } else {
             $(document).find('.db-tables-select').addClass('hidden');
         }
+    });
+
+    $(document).on('change', '.instawp-wrap .nav-item-content.create input[type="radio"]:not(.plan-selector), .instawp-wrap .nav-item-content.create input[type="checkbox"]:not(.plan-selector)', function () {
+        $(document).find('.files-size-container .total-size').html(plugin_object.trans.calculating_size_txt + ' (0%)').removeClass('loaded');
+        $(document).find('.staging-plan-container').html('').addClass('hidden');
     });
 
     $(document).on('change', '.instawp-checkbox.exclude-database-item', function () {
@@ -1095,7 +1306,7 @@
                     success: function (response) {
                         // parentEl.find('.sub-item').removeClass('hidden').html(response.data);
                         parentEl.append('<div class="pl-5 sub-item">' + response.data.content + '</div>');
-                        //inputLabel.after('<svg role="status" class="inline ml-3 w-4 h-4 text-primary-900 opacity-70" fill="none" xmlns="http://www.w3.org/2000/svg"> <path style="fill: #005e54;" fill-rule="evenodd" clip-rule="evenodd" d="M1.59995 0.800049C2.09701 0.800049 2.49995 1.20299 2.49995 1.70005V3.59118C3.64303 2.42445 5.23642 1.70005 6.99995 1.70005C9.74442 1.70005 12.0768 3.45444 12.9412 5.90013C13.1069 6.36877 12.8612 6.88296 12.3926 7.0486C11.924 7.21425 11.4098 6.96862 11.2441 6.49997C10.6259 4.75097 8.95787 3.50005 6.99995 3.50005C5.52851 3.50005 4.22078 4.20657 3.39937 5.30005H6.09995C6.59701 5.30005 6.99995 5.70299 6.99995 6.20005C6.99995 6.6971 6.59701 7.10005 6.09995 7.10005H1.59995C1.10289 7.10005 0.699951 6.6971 0.699951 6.20005V1.70005C0.699951 1.20299 1.10289 0.800049 1.59995 0.800049ZM1.6073 8.95149C2.07594 8.78585 2.59014 9.03148 2.75578 9.50013C3.37396 11.2491 5.04203 12.5 6.99995 12.5C8.47139 12.5 9.77912 11.7935 10.6005 10.7L7.89995 10.7C7.40289 10.7 6.99995 10.2971 6.99995 9.80005C6.99995 9.30299 7.40289 8.90005 7.89995 8.90005H12.3999C12.6386 8.90005 12.8676 8.99487 13.0363 9.16365C13.2051 9.33243 13.3 9.56135 13.3 9.80005V14.3C13.3 14.7971 12.897 15.2 12.4 15.2C11.9029 15.2 11.5 14.7971 11.5 14.3V12.4089C10.3569 13.5757 8.76348 14.3 6.99995 14.3C4.25549 14.3 1.92309 12.5457 1.05867 10.1C0.893024 9.63132 1.13866 9.11714 1.6073 8.95149Z"></path> </svg>')
+                        //inputLabel.after('<svg role="status" class="inline ml-3 w-4 h-4 text-primary-900 opacity-70" fill="none" xmlns="http://www.w3.org/2000/svg"> <path style="fill: #005E54;" fill-rule="evenodd" clip-rule="evenodd" d="M1.59995 0.800049C2.09701 0.800049 2.49995 1.20299 2.49995 1.70005V3.59118C3.64303 2.42445 5.23642 1.70005 6.99995 1.70005C9.74442 1.70005 12.0768 3.45444 12.9412 5.90013C13.1069 6.36877 12.8612 6.88296 12.3926 7.0486C11.924 7.21425 11.4098 6.96862 11.2441 6.49997C10.6259 4.75097 8.95787 3.50005 6.99995 3.50005C5.52851 3.50005 4.22078 4.20657 3.39937 5.30005H6.09995C6.59701 5.30005 6.99995 5.70299 6.99995 6.20005C6.99995 6.6971 6.59701 7.10005 6.09995 7.10005H1.59995C1.10289 7.10005 0.699951 6.6971 0.699951 6.20005V1.70005C0.699951 1.20299 1.10289 0.800049 1.59995 0.800049ZM1.6073 8.95149C2.07594 8.78585 2.59014 9.03148 2.75578 9.50013C3.37396 11.2491 5.04203 12.5 6.99995 12.5C8.47139 12.5 9.77912 11.7935 10.6005 10.7L7.89995 10.7C7.40289 10.7 6.99995 10.2971 6.99995 9.80005C6.99995 9.30299 7.40289 8.90005 7.89995 8.90005H12.3999C12.6386 8.90005 12.8676 8.99487 13.0363 9.16365C13.2051 9.33243 13.3 9.56135 13.3 9.80005V14.3C13.3 14.7971 12.897 15.2 12.4 15.2C11.9029 15.2 11.5 14.7971 11.5 14.3V12.4089C10.3569 13.5757 8.76348 14.3 6.99995 14.3C4.25549 14.3 1.92309 12.5457 1.05867 10.1C0.893024 9.63132 1.13866 9.11714 1.6073 8.95149Z"></path> </svg>')
                         imgEl.removeClass('rotate-icon');
                         parentEl.find('.instawp-loader').remove();
                     },
@@ -1258,19 +1469,33 @@
         }
     });
 
+    $(document).on('change', '#instawp_activity_log_interval', function () {
+        let value = $(this).val();
+        console.log(value);
+        if (value === 'every_x_minutes') {
+            $(document).find('.instawp-activity-log-interval-minutes-field').show();
+        } else if (value === 'instantly') {
+            $(document).find('.instawp-activity-log-interval-minutes-field').hide();
+        }
+    });
+
     let debounce = null;
-    $(document).on('input', '#instawp_api_heartbeat', function (e) {
+    $(document).on('input', '#instawp_api_heartbeat, #instawp_activity_log_interval_minutes', function (e) {
         let el = $(this);
         let name = el.attr('id');
         let value = parseInt(Math.abs($(this).val()));
 
+        if (!value) {
+            return;
+        }
+
         clearTimeout(debounce);
         debounce = setTimeout(function () {
-            if (value >= 15 && value <= 60) {
+            if (value >= el.attr('min') && value <= el.attr('max')) {
                 ajaxSaveManagementSettings(name, value);
             } else {
-                el.val(15);
-                ajaxSaveManagementSettings(name, 15);
+                el.val(el.attr('min'));
+                ajaxSaveManagementSettings(name, el.attr('min'));
             }
         }, 500);
     });
@@ -1334,8 +1559,23 @@
                 'security': plugin_object.security
             },
             success: function (response) {
-                console.log(response)
-                window.open(response.data.login_url, '_blank');
+                if (response.success === false) {
+                    return false;
+                }
+                if ('error_log' === el.data('type') && response.data.error_log) {
+                    // Original text
+                    let originalText = el.text();
+                    // Change text
+                    el.text(plugin_object.trans.copied);
+                    // Copy to clipboard
+                    navigator.clipboard.writeText(JSON.stringify(response.data.error_log));
+                    // Revert text for 5 seconds
+                    setTimeout(function () {
+                        el.text(originalText);
+                    }, 5000);
+                } else if (response.data.login_url) {
+                    window.open(response.data.login_url, '_blank');
+                }
             },
             error: function (jqXHR, textStatus, errorThrown) {
                 console.log(errorThrown);
@@ -1359,7 +1599,7 @@
     $(document).on('click', '.full-screen-btn', function (e) {
         e.preventDefault();
         let el = $(document).find('#visibility-box');
-        if( el.hasClass('full-screen') ) {
+        if (el.hasClass('full-screen')) {
             el.removeClass('full-screen')
             $(document).find('body').removeClass('overflow-hidden');
             $(document).find('#visibility-collapse').removeClass('hidden');
@@ -1386,13 +1626,105 @@
             },
             success: function (response) {
                 console.log(response)
-                if(response.success !== true) {
+                if (response.success !== true) {
                     el.closest('.visibility-content-item > .break-all').removeClass('line-through');
                     alert(response.data.message)
                 }
             },
             error: function (jqXHR, textStatus, errorThrown) {
                 console.log(errorThrown);
+            }
+        });
+    });
+
+    $(document).on('click', '.instawp-connect-plan-btn', function (e) {
+        e.preventDefault();
+
+        let el = $(this);
+        el.prop('disabled', true).addClass('opacity-50').append('<svg class="instawp-loader inline ml-3 w-4 h-4 text-primary-900 animate-spin" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="#E5E7EB"></path><path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentColor"></path></svg>');
+
+        $.ajax({
+            type: 'POST',
+            url: plugin_object.ajax_url,
+            data: {
+                'action': 'instawp_change_plan',
+                'plan_id': el.data('plan-id'),
+                'security': plugin_object.security
+            },
+            success: function (response) {
+                el.prop('disabled', false).removeClass('opacity-50').find('.instawp-loader').remove();
+                if (response.success !== true) {
+                    alert(response.data.message)
+                } else {
+                    $(document).find('#instawp-plans-container').html(response.data.plans);
+                    $(document).find('#instawp-protect-site-btn').parent().remove();
+                }
+            },
+            error: function (jqXHR, textStatus, errorThrown) {
+                el.prop('disabled', false).removeClass('opacity-50').find('.instawp-loader').remove();
+                console.log(errorThrown);
+            }
+        });
+    });
+
+    $(document).on('click', '#instawp-protect-site-btn', function (e) {
+        e.preventDefault();
+        let el = $(this);
+        el.prop('disabled', true).addClass('opacity-50').append('<svg class="instawp-loader inline ml-3 w-4 h-4 text-primary-900 animate-spin" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="#E5E7EB"></path><path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentColor"></path></svg>');
+
+        let plan_id = $(document).find('.instawp-connect-plan-btn:not(.pointer-events-none)').first().data('plan-id');
+        $.ajax({
+            type: 'POST',
+            url: plugin_object.ajax_url,
+            data: {
+                'action': 'instawp_change_plan',
+                'plan_id': plan_id,
+                'security': plugin_object.security
+            },
+            success: function (response) {
+                el.prop('disabled', false).removeClass('opacity-50').find('.instawp-loader').remove();
+                if (response.success !== true) {
+                    alert(response.data.message)
+                } else {
+                    $(document).find('#instawp-plans-container').html(response.data.plans);
+                    el.parent().remove();
+                }
+            },
+            error: function (jqXHR, textStatus, errorThrown) {
+                el.prop('disabled', false).removeClass('opacity-50').find('.instawp-loader').remove();
+                console.log(errorThrown);
+            }
+        });
+    });
+
+    $(document).on('click', '.instawp-update-plugin', function (e) {
+        e.preventDefault();
+
+        let updateButton = $(this),
+            updateNoticeArea = updateButton.parent().find('.instawp-update-notice');
+
+        $.ajax({
+            type: 'POST',
+            url: plugin_object.ajax_url,
+            context: this,
+            beforeSend: function () {
+                updateNoticeArea.addClass('hidden').removeClass('inline-block');
+                updateButton.prepend('<svg role="status" class="instawp-loader inline w-3 h-3 mr-1 text-primary-900 animate-spin" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg"><path data-v-fe125208="" d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="#E5E7EB"></path><path data-v-fe125208="" d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentColor"></path></svg>');
+            },
+            complete: function () {
+                updateButton.find('.instawp-loader').remove();
+            },
+            data: {
+                'action': 'instawp_update_plugin',
+                'security': plugin_object.security,
+            },
+            success: function (response) {
+                console.log(response.data.updated);
+                if (response.data.updated) {
+                    window.location.reload();
+                } else {
+                    updateNoticeArea.addClass('inline-block').removeClass('hidden');
+                }
             }
         });
     });

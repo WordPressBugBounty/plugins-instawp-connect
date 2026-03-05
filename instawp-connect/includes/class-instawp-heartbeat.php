@@ -19,9 +19,8 @@ if ( ! class_exists( 'InstaWP_Heartbeat' ) ) {
 			add_action( 'update_option_instawp_api_heartbeat', array( $this, 'clear_heartbeat_action' ) );
 			add_action( 'add_option_instawp_rm_heartbeat', array( $this, 'clear_heartbeat_action' ) );
 			add_action( 'update_option_instawp_rm_heartbeat', array( $this, 'clear_heartbeat_action' ) );
-			add_action( 'instawp_handle_heartbeat', array( $this, 'send_heartbeat_data' ) );
-			add_action( 'instawp_send_heartbeat', array( $this, 'send_heartbeat_data' ) );
-			add_action( 'instawp_handle_heartbeat_status', array( $this, 'handle_heartbeat_status' ) );
+			add_action( 'instawp_send_heartbeat', array( $this, 'send_heartbeat_data' ) ); // Every 24 hours
+			add_action( 'instawp_handle_heartbeat', array( $this, 'handle_heartbeat_data' ) ); // User defined interval
 		}
 
 		public function register_events() {
@@ -29,18 +28,14 @@ if ( ! class_exists( 'InstaWP_Heartbeat' ) ) {
 				as_schedule_recurring_action( time(), DAY_IN_SECONDS, 'instawp_send_heartbeat', array(), 'instawp-connect' );
 			}
 
-			if ( ! as_has_scheduled_action( 'instawp_handle_heartbeat_status', array(), 'instawp-connect' ) ) {
-				as_schedule_recurring_action( time(), DAY_IN_SECONDS, 'instawp_handle_heartbeat_status', array(), 'instawp-connect' );
-			}
-
 			$heartbeat = Option::get_option( 'instawp_rm_heartbeat', 'on' );
 			$heartbeat = empty( $heartbeat ) ? 'on' : $heartbeat;
 
 			if ( 'on' === $heartbeat ) {
-				$interval = Option::get_option( 'instawp_api_heartbeat', 15 );
-				$interval = empty( $interval ) ? 15 : (int) $interval;
-
 				if ( ! as_has_scheduled_action( 'instawp_handle_heartbeat', array(), 'instawp-connect' ) ) {
+					$interval = Option::get_option( 'instawp_api_heartbeat', 240 );
+					$interval = empty( $interval ) ? 240 : (int) $interval;
+
 					as_schedule_recurring_action( time(), ( $interval * MINUTE_IN_SECONDS ), 'instawp_handle_heartbeat', array(), 'instawp-connect' );
 				}
 			}
@@ -51,17 +46,40 @@ if ( ! class_exists( 'InstaWP_Heartbeat' ) ) {
 		}
 
 		public function send_heartbeat_data() {
-			self::send_heartbeat();
-		}
-
-		public function handle_heartbeat_status() {
-			$disabled = Option::get_option( 'instawp_rm_heartbeat_failed' );
-			if ( ! $disabled ) {
+			$heartbeat_response = self::send_heartbeat();
+			if ( ! $heartbeat_response['success'] ) {
 				return;
 			}
 
-			if ( self::send_heartbeat() ) {
+			$failed_count = Option::get_option( 'instawp_heartbeat_failed', 0 );
+			$failed_count = $failed_count ? $failed_count : 0;
+
+			if ( $failed_count > 10 ) {
+				Option::delete_option( 'instawp_heartbeat_failed' );
 				Option::update_option( 'instawp_rm_heartbeat', 'on' );
+			}
+		}
+
+		public function handle_heartbeat_data() {
+			$heartbeat_response = self::send_heartbeat();
+
+			if ( $heartbeat_response['success'] ) {
+				Option::delete_option( 'instawp_heartbeat_failed' );
+			} else {
+				$failed_count = Option::get_option( 'instawp_heartbeat_failed', 0 );
+				$failed_count = $failed_count ? $failed_count : 0;
+
+				++$failed_count;
+
+				Option::update_option( 'instawp_heartbeat_failed', $failed_count );
+
+				if ( $failed_count > 10 ) {
+					Option::update_option( 'instawp_rm_heartbeat', 'off' );
+
+					if ( intval( $heartbeat_response['response_code'] ) === 404 ) {
+						instawp_reset_running_migration( 'hard' );
+					}
+				}
 			}
 		}
 
@@ -83,17 +101,19 @@ if ( ! class_exists( 'InstaWP_Heartbeat' ) ) {
 
 			$post_data = array();
 			foreach ( get_post_types() as $post_type ) {
-				$post_data[ $post_type ] = ( array ) wp_count_posts( $post_type );
+				$post_data[ $post_type ] = (array) wp_count_posts( $post_type );
 			}
 
 			$inventory = new Inventory();
 			$site_data = $inventory->fetch();
 
-            unset( $sizes_data['total_size'] );
-            $total_size    = array_sum( array_filter( wp_list_pluck( $sizes_data, 'raw' ) ) );
-            $database_size = ! empty( $sizes_data['database_size']['raw'] ) ? $sizes_data['database_size']['raw'] : 0;
+			unset( $sizes_data['total_size'] );
+			$total_size    = array_sum( array_filter( wp_list_pluck( $sizes_data, 'raw' ) ) );
+			$database_size = ! empty( $sizes_data['database_size']['raw'] ) ? $sizes_data['database_size']['raw'] : 0;
 
 			return array(
+				'title'             => get_bloginfo( 'name' ),
+				'icon'              => get_site_icon_url(),
 				'wp_version'        => $wp_version,
 				'php_version'       => $php_version,
 				'plugin_version'    => INSTAWP_PLUGIN_VERSION,
@@ -115,11 +135,68 @@ if ( ! class_exists( 'InstaWP_Heartbeat' ) ) {
 			);
 		}
 
-		public static function send_heartbeat( $connect_id = null ) {
-			global $wpdb;
+		/**
+		 * Set last sent heartbeat data
+		 *
+		 * @param array  $data Heartbeat data
+		 * @param string $connect_id Connection ID
+		 *
+		 * @return bool
+		 */
+		public static function set_last_heartbeat_data( $data, $connect_id ) {
+			if ( empty( $data ) || empty( $connect_id ) ) {
+				return false;
+			}
+			// Get last heartbeat.
+			$hearbeats = self::get_last_heartbeat_data();
+			// If last heartbeat is not empty.
+			if ( ! empty( $hearbeats[ $connect_id ] ) && $data === $hearbeats[ $connect_id ] ) {
+				return false;
+			}
+			// Set last heartbeat.
+			$hearbeats[ $connect_id ] = $data;
+			Option::update_option( 'instawp_last_heartbeat_data', $hearbeats );
+			return true;
+		}
 
+		/**
+		 * Get last sent heartbeat data.
+		 *
+		 * @param string $connect_id Connection ID.
+		 *
+		 * @return array
+		 */
+		public static function get_last_heartbeat_data( $connect_id = null ) {
+			$hearbeats = Option::get_option( 'instawp_last_heartbeat_data', array() );
+			$hearbeats = is_array( $hearbeats ) ? $hearbeats : array();
+			if ( empty( $connect_id ) ) {
+				return $hearbeats;
+			}
+			return ( empty( $hearbeats ) || empty( $hearbeats[ $connect_id ] ) ) ? '' : $hearbeats[ $connect_id ];
+		}
+
+		/**
+		 * Check if new heartbeat data.
+		 *
+		 * @param array  $data Heartbeat data.
+		 * @param string $connect_id Connection ID.
+		 *
+		 * @return bool
+		 */
+		public static function has_new_heartbeat_data( $data, $connect_id ) {
+			return self::get_last_heartbeat_data( $connect_id ) !== $data;
+		}
+
+		/**
+		 * Send heartbeat data.
+		 *
+		 * @param string $connect_id Connection ID.
+		 *
+		 * @return array
+		 */
+		public static function send_heartbeat( $connect_id = null ) {
 			if ( defined( 'INSTAWP_DEBUG_LOG' ) && true === INSTAWP_DEBUG_LOG ) {
-				error_log( "HEARTBEAT RAN AT : " . date( 'd-m-Y, H:i:s, h:i:s' ) );
+				error_log( 'HEARTBEAT RAN AT : ' . date( 'd-m-Y, H:i:s, h:i:s' ) );
 			}
 
 			if ( empty( $connect_id ) ) {
@@ -127,83 +204,54 @@ if ( ! class_exists( 'InstaWP_Heartbeat' ) ) {
 			}
 
 			if ( empty( $connect_id ) ) {
-				return false;
-			}
-
-			$last_sent_data = get_option( 'instawp_heartbeat_sent_data', array() );
-			$heartbeat_data = self::prepare_data();
-
-			$setting = Option::get_option( 'instawp_activity_log', 'off' );
-			if ( $setting === 'on' ) {
-				$log_ids    = $logs = array();
-				$table_name = INSTAWP_DB_TABLE_ACTIVITY_LOGS;
-				$results    = $wpdb->get_results(
-					$wpdb->prepare( "SELECT * FROM {$table_name} WHERE severity!=%s", 'critical' ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				return array(
+					'success'       => false,
+					'response'      => array(),
+					'response_code' => 404,
 				);
-
-				foreach ( $results as $result ) {
-					$logs[ $result->action ] = array(
-						'data_type' => current( explode( '_', $result->action ) ),
-						'count'     => ! empty( $logs[ $result->action ]['count'] ) ? $logs[ $result->action ]['count'] + 1 : 1,
-						'meta'      => array(),
-						'data'      => array( ( array ) $result ),
-					);
-					$log_ids[]               = $result->id;
-				}
-
-				$heartbeat_data['activity_logs'] = $logs;
 			}
 
-			$heartbeat_body = wp_json_encode( array(
-				'site_information' => $heartbeat_data,
-				'new_changes'      => instawp_array_recursive_diff( $heartbeat_data, $last_sent_data ),
-			) );
+			$heartbeat_data = self::prepare_data();
+			$heartbeat_body = wp_json_encode(
+				array(
+					'site_information' => $heartbeat_data,
+				)
+			);
 			$heartbeat_body = base64_encode( $heartbeat_body ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+			// If no new heartbeat data.
+			$heartbeat_body = self::has_new_heartbeat_data( $heartbeat_body, $connect_id ) ? $heartbeat_body : null;
 
-			$heartbeat_response = Curl::do_curl( "connects/{$connect_id}/heartbeat", array( $heartbeat_body ), array(), 'POST', 'v1' );
+			$heartbeat_response = Curl::do_curl(
+				"connects/{$connect_id}/heartbeat",
+				empty( $heartbeat_body ) ? array() : array( $heartbeat_body ),
+				array(),
+				'POST',
+				'v1'
+			);
 			$response_code      = Helper::get_args_option( 'code', $heartbeat_response );
+			$response_data      = Helper::get_args_option( 'data', $heartbeat_response, array() );
 			$success            = intval( $response_code ) === 200;
 
-			if ( ! $success ) {
-				$failed_count = Option::get_option( 'instawp_heartbeat_failed', 0 );
-				$failed_count = $failed_count ? $failed_count : 0;
-
-				++$failed_count;
-
-				if ( $failed_count > 10 ) {
-					Option::update_option( 'instawp_rm_heartbeat', 'off' );
-					Option::update_option( 'instawp_rm_heartbeat_failed', true );
-
-					delete_option( 'instawp_heartbeat_failed' );
-					as_unschedule_all_actions( 'instawp_handle_heartbeat', array(), 'instawp-connect' );
-
-					if ( intval( $response_code ) === 404 ) {
-						instawp_reset_running_migration( 'hard' );
-					}
-				} else {
-					Option::update_option( 'instawp_heartbeat_failed', $failed_count );
-				}
-			} else {
-				delete_option( 'instawp_heartbeat_failed' );
-				delete_option( 'instawp_rm_heartbeat_failed' );
-
-				Option::update_option( 'instawp_heartbeat_sent_data', $heartbeat_data );
-
-				if ( $setting === 'on' ) {
-					$placeholders = implode( ',', array_fill( 0, count( $log_ids ), '%d' ) );
-					$wpdb->query(
-						$wpdb->prepare( "DELETE FROM {$table_name} WHERE id IN ($placeholders)", $log_ids ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-					);
-				}
-			}
-
 			if ( defined( 'INSTAWP_DEBUG_LOG' ) && INSTAWP_DEBUG_LOG ) {
-				error_log( "Print Heartbeat API Curl Response Start" );
+				error_log( 'Print Heartbeat API Curl Response Start' );
 				error_log( wp_json_encode( $heartbeat_response, true ) );
-				error_log( "Print Heartbeat API Curl Response End" );
+				error_log( 'Print Heartbeat API Curl Response End' );
 			}
 
-			return $success;
+			if ( $success ) {
+				if ( ! empty( $heartbeat_body ) ) {
+					self::set_last_heartbeat_data( $heartbeat_body, $connect_id );
+				}
+			} elseif ( ! empty( $response_data ) && isset( $response_data['remove_connect'] ) && true === $response_data['remove_connect'] ) {
+				// Remove connect.
+				instawp_reset_running_migration( 'hard' );
+			}
+
+			return array(
+				'success'       => $success,
+				'response'      => $heartbeat_response,
+				'response_code' => $response_code,
+			);
 		}
 	}
 }

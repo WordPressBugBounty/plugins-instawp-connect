@@ -26,7 +26,7 @@ class WPConfigTransformer {
 	/**
 	 * Array of parsed configs.
 	 *
-	 * @var array
+	 * @var array<string, array<string, array{src: string, value: string, parts: array<string>}>>
 	 */
 	protected $wp_configs = array();
 
@@ -38,14 +38,14 @@ class WPConfigTransformer {
 	 *
 	 * @param string $wp_config_path Path to a wp-config.php file.
 	 */
-	public function __construct( $wp_config_path ) {
+	public function __construct( $wp_config_path, $read_only = false ) {
 		$basename = basename( $wp_config_path );
 
 		if ( ! file_exists( $wp_config_path ) ) {
 			throw new Exception( "{$basename} does not exist." );
 		}
 
-		if ( ! is_writable( $wp_config_path ) ) {
+		if ( ! $read_only && ! is_writable( $wp_config_path ) ) {
 			throw new Exception( "{$basename} is not writable." );
 		}
 
@@ -64,7 +64,7 @@ class WPConfigTransformer {
 	 * @return bool
 	 */
 	public function exists( $type, $name ) {
-		$wp_config_src = file_get_contents( $this->wp_config_path );
+		$wp_config_src = (string) file_get_contents( $this->wp_config_path );
 
 		if ( ! trim( $wp_config_src ) ) {
 			throw new Exception( 'Config file is empty.' );
@@ -92,7 +92,7 @@ class WPConfigTransformer {
 	 * @return string|null
 	 */
 	public function get_value( $type, $name ) {
-		$wp_config_src = file_get_contents( $this->wp_config_path );
+		$wp_config_src = (string) file_get_contents( $this->wp_config_path );
 
 		if ( ! trim( $wp_config_src ) ) {
 			throw new Exception( 'Config file is empty.' );
@@ -114,10 +114,10 @@ class WPConfigTransformer {
 	 * @throws Exception If the config value provided is not a string.
 	 * @throws Exception If the config placement anchor could not be located.
 	 *
-	 * @param string $type    Config type (constant or variable).
-	 * @param string $name    Config name.
-	 * @param string $value   Config value.
-	 * @param array  $options (optional) Array of special behavior options.
+	 * @param string                     $type    Config type (constant or variable).
+	 * @param string                     $name    Config name.
+	 * @param string                     $value   Config value.
+	 * @param array<string, bool|string> $options (optional) Array of special behavior options.
 	 *
 	 * @return bool
 	 */
@@ -164,10 +164,10 @@ class WPConfigTransformer {
 	 *
 	 * @throws Exception If the config value provided is not a string.
 	 *
-	 * @param string $type    Config type (constant or variable).
-	 * @param string $name    Config name.
-	 * @param string $value   Config value.
-	 * @param array  $options (optional) Array of special behavior options.
+	 * @param string              $type    Config type (constant or variable).
+	 * @param string              $name    Config name.
+	 * @param string              $value   Config value.
+	 * @param array<string, bool> $options (optional) Array of special behavior options.
 	 *
 	 * @return bool
 	 */
@@ -194,6 +194,10 @@ class WPConfigTransformer {
 
 		$old_src   = $this->wp_configs[ $type ][ $name ]['src'];
 		$old_value = $this->wp_configs[ $type ][ $name ]['value'];
+
+		/**
+		 * @var string $new_value
+		 */
 		$new_value = $this->format_value( $value, $raw );
 
 		if ( $normalize ) {
@@ -204,7 +208,7 @@ class WPConfigTransformer {
 			$new_src      = implode( '', $new_parts );
 		}
 
-		$contents = preg_replace(
+		$contents = (string) preg_replace(
 			sprintf( '/(?<=^|;|<\?php\s|<\?\s)(\s*?)%s/m', preg_quote( trim( $old_src ), '/' ) ),
 			'$1' . str_replace( '$', '\$', trim( $new_src ) ),
 			$this->wp_config_src
@@ -226,8 +230,19 @@ class WPConfigTransformer {
 			return false;
 		}
 
-		$pattern  = sprintf( '/(?<=^|;|<\?php\s|<\?\s)%s\s*(\S|$)/m', preg_quote( $this->wp_configs[ $type ][ $name ]['src'], '/' ) );
-		$contents = preg_replace( $pattern, '$1', $this->wp_config_src );
+		if ( 'constant' === $type ) {
+			$pattern = sprintf(
+				"/\bdefine\s*\(\s*['\"]%s['\"]\s*,\s*(('[^']*'|\"[^\"]*\")|\s*(?:[\s\S]*?))\s*\)\s*;\s*/mi",
+				preg_quote( $name, '/' )
+			);
+		} else {
+			$pattern = sprintf(
+				'/^\s*\$%s\s*=\s*[\s\S]*?;\s*$/mi',
+				preg_quote( $name, '/' )
+			);
+		}
+
+		$contents = (string) preg_replace( $pattern, '', $this->wp_config_src );
 
 		return $this->save( $contents );
 	}
@@ -240,7 +255,7 @@ class WPConfigTransformer {
 	 * @param string $value Config value.
 	 * @param bool   $raw   Display value in raw format without quotes.
 	 *
-	 * @return mixed
+	 * @return bool|float|int|string|null
 	 */
 	protected function format_value( $value, $raw ) {
 		if ( $raw && '' === trim( $value ) ) {
@@ -257,7 +272,7 @@ class WPConfigTransformer {
 	 *
 	 * @param string $type  Config type (constant or variable).
 	 * @param string $name  Config name.
-	 * @param mixed  $value Config value.
+	 * @param bool|float|int|string|null $value Config value.
 	 *
 	 * @return string
 	 */
@@ -278,7 +293,7 @@ class WPConfigTransformer {
 	 *
 	 * @param string $src Config file source.
 	 *
-	 * @return array
+	 * @return array<string, array<string, array{src: string, value: string, parts: array<string>}>>
 	 */
 	protected function parse_wp_config( $src ) {
 		$configs             = array();
@@ -291,14 +306,14 @@ class WPConfigTransformer {
 				if ( '//' === $token[1] ) {
 					// For empty line comments, actually remove empty line comments instead of all double-slashes.
 					// See: https://github.com/wp-cli/wp-config-transformer/issues/47
-					$src = preg_replace( '/' . preg_quote( '//', '/' ) . '$/m', '', $src );
+					$src = (string) preg_replace( '/' . preg_quote( '//', '/' ) . '$/m', '', $src );
 				} else {
 					$src = str_replace( $token[1], '', $src );
 				}
 			}
 		}
 
-		preg_match_all( '/(?<=^|;|<\?php\s|<\?\s)(\h*define\s*\(\s*[\'"](\w*?)[\'"]\s*)(,\s*(\'\'|""|\'.*?[^\\\\]\'|".*?[^\\\\]"|.*?)\s*)((?:,\s*(?:true|false)\s*)?\)\s*;)/ims', $src, $constants );
+		preg_match_all( '/(?<=^|;|<\?php\s|<\?\s)(\h*define\s*\(\s*[\'"](\w*?)[\'"]\s*)(,\s*(\'\'|""|\'.*?[^\\\\]\'|".*?[^\\\\]"|.*?)\s*,?\s*)((?:,\s*(?:true|false)[,\s]*)?\)\s*;)/ims', $src, $constants );
 		preg_match_all( '/(?<=^|;|<\?php\s|<\?\s)(\h*\$(\w+)\s*=)(\s*(\'\'|""|\'.*?[^\\\\]\'|".*?[^\\\\]"|.*?)\s*;)/ims', $src, $variables );
 
 		if ( ! empty( $constants[0] ) && ! empty( $constants[1] ) && ! empty( $constants[2] ) && ! empty( $constants[3] ) && ! empty( $constants[4] ) && ! empty( $constants[5] ) ) {

@@ -2,9 +2,9 @@
 Contributors: instawp
 Tags: clone, migrate, staging, backup, restore
 Requires at least: 5.6
-Tested up to: 6.6
+Tested up to: 6.9
 Requires PHP: 7.0
-Stable tag: 0.1.0.50
+Stable tag: 0.1.2.5
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.en.html
 
@@ -97,6 +97,312 @@ Need support or want to partner with us? Go to our [website](http://instawp.com/
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team helps validate, triage, and handle any security vulnerabilities. [Report a security vulnerability](https://patchstack.com/database/vdp/instawp-connect).
 
 == Changelog ==
+
+= 0.1.2.5 - 25 February 2026 =
+- Fixed: WordPress root directory detection failing when plugin is installed as a symlink.
+- Optimized: Admin dashboard JavaScript and improved error message handling.
+- Fixed: Missing migration file detection during migration.
+- Added: Prevent initiating a new migration when one is already in progress.
+
+= 0.1.2.4 - 13 February 2026 =
+- Fixed: Purge content cache on edit.
+- Optimized: Codebase.
+
+= 0.1.2.3 - 21 January 2026 =
+- Enhanced: Standardized the user-agent used in API calls.
+- Added: Delay before showing the staging site success screen to ensure the site is fully ready.
+- Added: Session fallback for migration options when the options file is temporarily unavailable.
+- Fixed: Migration failures caused by options file read issues during execution.
+- Fixed: Pull API errors not being correctly returned to the server.
+- Fixed: Database query used for tracking migration progress.
+
+= 0.1.2.2 - 01 December 2025 =
+- Fixed: 403 error on migration cleanup API call.
+- Added: Purge cdn cache
+
+= 0.1.2.1 - 18 November 2025 =
+- Fixed: Cleanup of migration backup files.
+- Fixed: Generation of destination file URL
+
+= 0.1.2.0 - 11 November 2025 =
+- Fixed: Migration status updates.
+- Fixed: Cleanup of migration files.
+- Enhanced: Security and authentication checks for admin endpoints
+
+= 0.1.1.9 - 14 October 2025 =
+- Optimized: Improved connect cleanup process based on heartbeat responses.
+- Fixed: Issue with instantly processing the first connect heartbeat.
+
+= 0.1.1.8 - 03 October 2025 =
+- Fixed: Admin dashboard page CSS.
+- Optimized: Connect Heartbeat.
+
+= 0.1.1.7 - 16 September 2025 =
+- Fixed: Staging site status restore issue.
+- Fixed: Display of the correct connected team name.
+- Improved: Error logging.
+- Updated: Dependency packages.
+
+= 0.1.1.6 - 12 August 2025 =
+- Fixed: Removed migration helper plugins after migration.
+- Fixed: Excluded migration helper plugins from migration.
+
+= 0.1.1.5 - 06 August 2025 =
+- Fixed: Source and Destination migration file path.
+
+= 0.1.1.3 - 03 July 2025 =
+- Improved: Optimized sync query performance
+- Added: Retry mechanism for sync failures 
+- Added: Error logs
+- Added: Exclusion of custom plugin/theme sync events
+- Fixed: Migration issues on sites with a single PHP worker
+- Fixed: Activity Logs not working.
+- Fixed: bunny.net CDN cache purging was not working.
+
+= 0.1.1.2 - 24 June 2025 =
+- Added: Plan validation and auto select plan based on site size.
+- Fixed: Plan description text.
+- Fixed: Untranslated texts.
+
+= 0.1.1.1 - 20 June 2025 =
+- Fixed: Staging site can't be created for some users.
+
+= 0.1.1.0 - 20 June 2025 =
+- NEW: Site Plan Selection in Confirmation screen.
+- NEW: Added 2 Way Sync support for Mega Menu plugin.
+- Fixed: UI issues and back/next navigation state.
+- Fixed: Destination migration file path for Elementor cloud.
+- Fixed: Reduced excessive event log for user_roles option sync.
+
+= 0.1.0.93 - 09 June 2025 =
+- Added: Migration support without requiring Connects
+- Updated: instawp_last_migration_details option post plugin installation
+- Updated: Excluded wp-settings.php for WP Cloud migrations
+- Fixed: Corrected siteurl after migration
+
+= 0.1.0.92 - 28 May 2025 =
+- Fix: Debug Log not enabling for Site Management
+
+= 0.1.0.91 - 26 May 2025 =
+- Fix: Handle the response from the generate destination file function
+- Update: Plugin zip url
+
+= 0.1.0.90 - 20 May 2025 =
+- Update: Updated the messages of Migration screen
+- Update: Updated Site management features list
+- Fix: Connected team name and user email ID were not showing on some cases
+
+= 0.1.0.89 - 07 May 2025 =
+- Enhancement: Redesigned initial plugin screen for better user experience
+- Enhancement: Added visibility of connected team name and user email ID on plugin interface
+- Update: Upgraded Adminer database manager to latest version for improved security and features
+- Fix: Optimized database queries to reduce multiple calls on Connect plugin page
+- Fix: Updated Connect helpers package with latest improvements and fixes
+
+= 0.1.0.88 - 05 May 2025 =
+- Fix: V1 API response code
+- Fix: Enhanced clarity in error messages
+- Fix: Push destination file handling in end-to-end migration
+
+= 0.1.0.87 - 17 April 2025 =
+- FIX: Application password verification issue.
+
+= 0.1.0.86 - 09 April 2025 =
+- NEW: Exposed update migration API handle post migration activities on the website.
+- FIX: Yoast seo metadata sync.
+- Fix: Optimized fetch sync per page.
+- FIX: InstaWP pull migration issue fixed.
+- FIX: Performance optimization done to the entire plugin.
+
+= 0.1.0.85 - 25 March 2025 =
+- FIX: Fixed pull migration SSL support issue.
+
+= 0.1.0.84 - 12 March 2025 =
+- FIX: Removed file manager from connect helpers to avoid security issues.
+- FIX: Exclude few option keys from migration.
+
+= 0.1.0.83 - 07 March 2025 =
+- NEW: Added plugin deactivation warning while there is a migration in progress.
+- NEW: Added migration in progress notification on the top admin bar.
+- FIX: Removed un-used codes.
+- FIX: Added email support on magic login api.
+
+= 0.1.0.82 - 05 March 2025 =
+- FIX: Optimized query for fetching sync events.
+- FIX: Fixed post migration cleanup for auto migration of demo site.
+
+= 0.1.0.81 - 24 February 2025 =
+- NEW: Added new plugin page banner.
+- FIX: Fixed push migration support for WP Cloud infrastructure.
+
+= 0.1.0.80 - 12 February 2025 =
+- NEW: Dynamic sync batch size adjustment.
+- NEW: Media import from source with sync server fallback on errors.
+- NEW: Exception handling in 2 Way Sync events receiver API.
+- FIX: Prevent duplicate image uploads during sync.
+- FIX: Store connect origin to check if the connect is valid for the current domain.
+- FIX: Fixed pull and push migration flow.
+- FIX: Fixed website disconnect flow from plugin side.
+
+= 0.1.0.79 - 23 January 2025 =
+- FIX: Fixed default username for magic login.
+- FIX: Added managed parameter to config API.
+- FIX: Fixed cache clearing issue with WP Rocket.
+- FIX: Push migration exclude files check.
+
+= 0.1.0.78 - 16 January 2025 =
+- NEW: Added extra log message for handling pull migration failure.
+
+= 0.1.0.77 - 15 January 2025 =
+- NEW: Added FSE theme global styles, Templates, Template parts sync support.
+- FIX: Fixed 404 errors in push migration.
+
+= 0.1.0.76 - 10 January 2025 =
+- FIX: Added support to disconnect connect via CLI.
+- FIX: Fixed support to mark staging site as parent via API.
+
+= 0.1.0.75 - 07 January 2025 =
+- FIX: Added changes to directly connect to the advanced plan.
+- FIX: Added changes to create connect as unmanaged.
+- FIX: Fixed pull migration issue.
+
+= 0.1.0.74 - 03 January 2025 =
+- NEW: Show warning message if the plugin is not on latest version.
+- FIX: Fixed file skip support on WP Cloud infrastructure.
+- FIX: Added support for getting site_url from database not from built-in function during the migration.
+- FIX: Fixed openssl_encrypt warning issue regarding IV.
+- FIX: Fixed IWPDB issue during pull migration file transfer.
+
+= 0.1.0.73 - 26 December 2024 =
+- FIX: Fixed file permission issue for the info file on push migration.
+
+= 0.1.0.72 - 19 December 2024 =
+- FIX: Moved push migration info file location to root directory.
+
+= 0.1.0.71 - 16 December 2024 =
+- FIX: Fix push migration issue.
+
+= 0.1.0.70 - 16 December 2024 =
+- NEW: Added white label support for enterprise customers.
+- NEW: Added support to toggle Activity logs via REST API.
+- FIX: Stabilize staging creation process.
+
+= 0.1.0.69 - 06 December 2024 =
+- FIX: Added support for multisite regarding the wp-config.
+- FIX: Added database backup before the push migration.
+- FIX: Change staging icon inside the plugin.
+
+= 0.1.0.68 - 27 November 2024 =
+- FIX: Sync image with webp extension.
+- FIX: Sync Spectra block content.
+- FIX: Sync media url from content.
+- FIX: Sync Stackable image and taxonomy blocks.
+- FIX: Sync home url
+- FIX: Fixed htaccess missing rule on skip media migration.
+
+= 0.1.0.67 - 22 November 2024 =
+- FIX: Send Site Title, Favicon url, PHP version, Plugin version and WordPress version on initial connect.
+- FIX: Added support for core update in activity logs.
+- FIX: Fixed push migration issue of database table prefix.
+- FIX: Update staging sites list after connect.
+- FIX: Added support to clear sync events via WP CLI.
+
+= 0.1.0.66 - 19 November 2024 =
+- FIX: Sync Kadence form, dynamic list, dynamic HTML, Navigation block content.
+- FIX: Fixed database table schema missing issue in pull migration.
+
+= 0.1.0.65 - 15 November 2024 =
+- NEW: Push migration create backup of plugins, themes and mu-plugin files before start.
+- FIX: Sync plugin and theme update php error
+- FIX: Auto fetch JWT from API.
+- FIX: Added support for wp-content in the root path.
+- FIX: Elementor image or icon upload sync.
+- FIX: Scaled image sync.
+- FIX: Elementor dynamic page content
+- FIX: Kadence block css sync.
+- FIX: WordPress editor image, icon and gallery block sync.
+- FIX: Kadence dynamic page content sync.
+- FIX: Sync post content links.
+
+= 0.1.0.64 - 30 October 2024 =
+- New: Sync WooCommerce order notes.
+- NEW: Activity Log feature is now available.
+- NEW: Disable WooCommerce email for WooCommerce data sync.
+- FIX: Sync WooCommerce product variant.
+- FIX: Sync WooCommerce order item meta.
+
+= 0.1.0.63 - 29 October 2024 =
+- NEW: Pull migration plugin and theme installation fallback to pages migration.
+- FIX: Improve pull and push migration scripts.
+
+= 0.1.0.62 - 28 October 2024 =
+- FIX: Magic login not working if site is connected via InstaWP Dashboard.
+
+= 0.1.0.61 - 26 October 2024 =
+- FIX: Exclude whitelabel if WP CLI is in use.
+- FIX: 2 Way Sync API for list events not working correctly on staging sites.
+- FIX: Fix database table fetching issue in iwpdb.
+- FIX: Remove exclude path if wp item failed to install via inventory.
+
+= 0.1.0.60 - 17 October 2024 =
+- FIX: Added API Endpoint to refresh all staging sites list.
+
+= 0.1.0.59 - 15 October 2024 =
+- FIX: Fixed plugin version.
+
+= 0.1.0.58 - 15 October 2024 =
+- NEW: WordPress core folders are now excluded from the migration process.
+- FIX: Issue with syncing WooCommerce meta data.
+- FIX: WooCommerce order ID now correctly displays on the staging site, matching the production site.
+- FIX: WooCommerce order creation and modification dates now sync properly.
+- FIX: Corrected synchronization of WooCommerce order totals.
+- FIX: Resolved issue where blank items were being added to WooCommerce orders on the staging site.
+- FIX: WooCommerce order origin now syncs correctly.
+- FIX: Post meta data is now saved correctly when triggered by action hooks.
+- FIX: Proper synchronization of post meta data saved via the save_post hook.
+
+= 0.1.0.57 - 3 October 2024 =
+- FIX - Showing error if wp-config.php is not writable.
+- FIX - Duplicate plugin and theme installation slug in migration settings
+- NEW - Show progress of plugin and theme installations during staging creation.
+- NEW - Add plugin and theme details in file count table
+- FIX - Relative directory path for migration
+- FIX - Delete staging sites when the plugin is disconnected from the app.
+- FIX - Fixed 2 way sync event recording for woocommerce
+
+= 0.1.0.56 - 18 September 2024 =
+- NEW - Added a faster migration method on the staging site creation.
+- FIX - Fixed user interface issues while creation staging site.
+- FIX - Fixed Debug Log can't delete issue.
+- FIX - Set default heartbeat interval to 4 hours.
+- FIX - 2 Way Sync Customizer Changes not saving.
+- FIX - 2 Way Sync error in Elementor checking.
+- FIX - 2 Way Sync Divi Builder issue.
+
+= 0.1.0.55 - 10 September 2024 =
+- FIX - Fixed BuddyBoss blocking InstaWP Connect plugin's REST API.
+- FIX - Improved migration error handling.
+- FIX - Fixed Migration Issues.
+- FIX - Plugin and theme update api doesn't clear old update data.
+
+= 0.1.0.54 - 5 September 2024 =
+- FIX - Fixed migration related issues in push migration.
+
+= 0.1.0.53 - 4 September 2024 =
+- FIX - Modified option to hide plugin menu item from users.
+- FIX - Sync Tab Access option is not saving if there is no option selected.
+- FIX - Missing Magic Login icon.
+
+= 0.1.0.52 - 3 September 2024 =
+- NEW - Scheduled Updates endpoint.
+- FIX - Removed InstaWP menu from topbar and menu for sub-sites in multisite.
+- FIX - Plugin settings not accessible on some cases of InstaWP Live.
+- FIX - Added checksum and retry logic in pull migration.
+- FIX - Migration issues.
+
+= 0.1.0.51 - 23 August 2024 =
+- NEW - Added support for retaining users after push in auto migration.
+- FIX - Fixed htaccess for url path.
 
 = 0.1.0.50 - 14 August 2024 =
 - NEW - Added cache flushing in post migration activities.

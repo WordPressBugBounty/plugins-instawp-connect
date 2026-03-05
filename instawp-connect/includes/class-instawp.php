@@ -15,6 +15,7 @@
 use InstaWP\Connect\Helpers\Curl;
 use InstaWP\Connect\Helpers\Helper;
 use InstaWP\Connect\Helpers\Option;
+use InstaWP\Connect\Helpers\WPConfig;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -38,6 +39,8 @@ class instaWP {
 
 	public $can_bundle = false;
 
+	public $activity_log_enabled = false;
+
 	public $api_key = null;
 
 	public $connect_id = null;
@@ -48,21 +51,17 @@ class instaWP {
 
 		$this->load_dependencies();
 
-		$this->version                 = INSTAWP_PLUGIN_VERSION;
-		$this->plugin_name             = INSTAWP_PLUGIN_SLUG;
+		$this->version     = INSTAWP_PLUGIN_VERSION;
+		$this->plugin_name = INSTAWP_PLUGIN_SLUG;
+
+		$this->connect_id              = instawp_get_connect_id();
 		$this->api_key                 = Helper::get_api_key();
 		$this->is_connected            = ! empty( $this->api_key );
 		$this->is_on_local             = instawp_is_website_on_local();
-		$this->connect_id              = instawp_get_connect_id();
 		$this->is_staging              = (bool) Option::get_option( 'instawp_is_staging', false );
 		$this->is_parent_on_local      = (bool) Option::get_option( 'instawp_parent_is_on_local', false );
 		$this->has_unsupported_plugins = ! empty( InstaWP_Tools::get_unsupported_active_plugins() );
 		$this->can_bundle              = ( class_exists( 'ZipArchive' ) || class_exists( 'PharData' ) );
-
-		// if connect id is empty then remove all connection
-//      if ( empty( $this->connect_id ) ) {
-//          instawp_reset_running_migration( 'hard' );
-//      }
 
 		if ( is_admin() ) {
 			$this->set_locale();
@@ -76,6 +75,8 @@ class instaWP {
 		add_action( 'instawp_clean_migrate_files', array( $this, 'clean_migrate_files' ) );
 		add_action( 'add_option_instawp_enable_wp_debug', array( $this, 'toggle_wp_debug' ), 10, 2 );
 		add_action( 'update_option_instawp_enable_wp_debug', array( $this, 'toggle_wp_debug' ), 10, 2 );
+		add_action( 'add_option_instawp_rm_debug_log', array( $this, 'toggle_wp_debug' ), 10, 2 );
+		add_action( 'update_option_instawp_rm_debug_log', array( $this, 'toggle_wp_debug' ), 10, 2 );
 	}
 
 	public function toggle_wp_debug( $old_value, $value ) {
@@ -93,8 +94,12 @@ class instaWP {
 			);
 		}
 
-		$wp_config = new \InstaWP\Connect\Helpers\WPConfig( $params );
-		$wp_config->update();
+		try {
+			$wp_config = new WPConfig( $params );
+			$wp_config->set();
+		} catch ( \Exception $e ) {
+			error_log( $e->getMessage() );
+		}
 	}
 
 	public function register_actions() {
@@ -278,20 +283,30 @@ class instaWP {
 		return $info['size'];
 	}
 
-	public function get_file_size_with_unit( $size, $unit = "" ) {
-		if ( ( ! $unit && $size >= 1 << 30 ) || $unit === "GB" ) {
-			return number_format( $size / ( 1 << 30 ), 2 ) . " GB";
+	public function get_file_size_with_unit( $size, $unit = "", $binary = true ) {
+		$base = $binary ? 1024 : 1000;
+		$units = array( 'B', 'KB', 'MB', 'GB' );
+		$exponents = array( 0, 1, 2, 3 );
+		
+		// If unit is specified, find its index
+		if ( $unit ) {
+			$unit_index = array_search( strtoupper( $unit ), $units );
+			if ( $unit_index !== false ) {
+				$exponent = $exponents[ $unit_index ];
+				return number_format( $size / ( $base ** $exponent ), 2 ) . " {$units[$unit_index]}";
+			}
 		}
-
-		if ( ( ! $unit && $size >= 1 << 20 ) || $unit === "MB" ) {
-			return number_format( $size / ( 1 << 20 ), 2 ) . " MB";
+		
+		// Auto-determine appropriate unit
+		$exponent = 0;
+		for ( $i = count( $exponents ) - 1; $i >= 0; $i-- ) {
+			if ( $size >= ( $base ** $exponents[ $i ] ) ) {
+				$exponent = $exponents[ $i ];
+				break;
+			}
 		}
-
-		if ( ( ! $unit && $size >= 1 << 10 ) || $unit === "KB" ) {
-			return number_format( $size / ( 1 << 10 ), 2 ) . " KB";
-		}
-
-		return number_format( $size ) . " B";
+		
+		return number_format( $size / ( $base ** $exponent ), 2 ) . " {$units[$exponent]}";
 	}
 
 	public function get_current_mode( $data_to_get = '' ) {
@@ -318,10 +333,13 @@ class instaWP {
 	}
 
 
-	public function instawp_check_usage_on_cloud( $total_size = 0 ) {
+	public function instawp_check_usage_on_cloud( $migrate_settings = array() ) {
+		$total_files_size = InstaWP_Tools::get_total_sizes( 'files', $migrate_settings );
+		$total_db_size    = InstaWP_Tools::get_total_sizes( 'db' );
+		$plan_id          = Helper::get_args_option( 'plan_id', $migrate_settings, 0 );
 
 		// connects/<connect_id>/usage
-		$api_response        = Curl::do_curl( "connects/{$this->connect_id}/usage", array(), array(), 'GET', 'v1' );
+		$api_response        = Curl::do_curl( "connects/{$this->connect_id}/usage?plan_id={$plan_id}", array(), array(), 'GET', 'v1' );
 		$api_response_status = Helper::get_args_option( 'success', $api_response, false );
 		$api_response_data   = Helper::get_args_option( 'data', $api_response, array() );
 
@@ -336,20 +354,51 @@ class instaWP {
 			);
 		}
 
-		$remaining_site       = (int) Helper::get_args_option( 'remaining_site', $api_response_data, '0' );
-		$can_proceed          = $remaining_site > 0;
-		$issue_for            = 'remaining_site';
-		$available_disk_space = (int) Helper::get_args_option( 'remaining_disk_space', $api_response_data, '0' );
+		$is_legacy = (bool) Helper::get_args_option( 'is_legacy', $api_response_data, false );
 
+		if ( $is_legacy ) {
+			$remaining_site       = (int) Helper::get_args_option( 'remaining_site', $api_response_data, '0' );
+			$available_disk_space = (int) Helper::get_args_option( 'remaining_disk_space', $api_response_data, '0' );
+			$can_proceed          = $remaining_site > 0;
+			$issue_for            = 'remaining_site';
+			$total_site_size      = round( $total_files_size / 1048576, 2 );
 
-		$total_site_size = round( $total_size / 1048576, 2 );
+			if ( $can_proceed ) {
+				$can_proceed = $total_site_size < $available_disk_space;
+				$issue_for   = 'remaining_disk_space';
+			}
+		} else {
+			$has_payment_method = (bool) Helper::get_args_option( 'has_payment_method', $api_response_data, false );
+			$free_site_count    = Helper::get_args_option( 'free_site_count', $api_response_data, null );
+			$current_plan       = Helper::get_args_option( 'plan', $api_response_data, null );
+			$can_proceed        = $has_payment_method === true;
+			$issue_for          = 'no_payment_method';
+			$total_site_size    = round( ( $total_files_size + $total_db_size ) / 1000000, 2 );
 
-		$api_response_data['require_disk_space'] = $total_site_size;
+			if ( $can_proceed ) {
+				$can_proceed = $current_plan !== null && is_array( $current_plan );
+				$issue_for   = 'no_plan_found';
+			}
 
-		if ( $can_proceed ) {
-			$can_proceed = $total_site_size < $available_disk_space;
-			$issue_for   = 'remaining_disk_space';
+			if ( $can_proceed && $current_plan['name'] === 'free' && $free_site_count !== null ) {
+				$can_proceed = intval( $free_site_count ) < 3;
+				$issue_for   = 'free_site_limit_exceeded';
+			}
+
+			if ( $can_proceed ) {
+				$disk_quota = array_filter( $current_plan['features'], function( $feature ) {
+					return $feature['feature'] === 'disk_quota';
+				} );
+				$disk_quota = ! empty( $disk_quota ) ? array_shift( $disk_quota ) : null;
+				
+				if ( ! empty( $disk_quota ) ) {
+					$can_proceed = $total_site_size <= (int) $disk_quota['value'];
+					$issue_for   = 'storage_limit_exceeded';
+				}
+			}
 		}
+
+		$api_response_data['required_disk_space'] = $total_site_size;
 
 		return array_merge( array(
 			'can_proceed' => $can_proceed,
@@ -358,48 +407,51 @@ class instaWP {
 	}
 
 	private function load_dependencies() {
-		require_once INSTAWP_PLUGIN_DIR . '/admin/class-instawp-admin.php';
+		require_once INSTAWP_PLUGIN_DIR . 'admin/class-instawp-admin.php';
 
-		require_once INSTAWP_PLUGIN_DIR . '/migrate/class-instawp-migrate.php';
+		require_once INSTAWP_PLUGIN_DIR . 'migrate/class-instawp-migrate.php';
 
-		require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-migrate-log.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-ajax.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-setting.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-database-management.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-tools.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-hooks.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-cli.php';
-		// require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-checksum.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-migrate-log.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-ajax.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-setting.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-database-management.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-tools.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-hooks.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-whitelabel.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-cli.php';
+		// require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-updates.php';
+		// require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-checksum.php';
 
 		if ( ! defined( 'IWP_PLUGIN_DISABLE_HEARTBEAT' ) || IWP_PLUGIN_DISABLE_HEARTBEAT !== true ) {
-			require_once INSTAWP_PLUGIN_DIR . '/includes/class-instawp-heartbeat.php';
+			require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-heartbeat.php';
 		}
 
-		require_once INSTAWP_PLUGIN_DIR . '/includes/apis/class-instawp-rest-api.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/apis/class-instawp-rest-api-content.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/apis/class-instawp-rest-api-manage.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/apis/class-instawp-rest-api-migration.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/apis/class-instawp-rest-api-woocommerce.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/apis/class-instawp-rest-api.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/apis/class-instawp-rest-api-content.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/apis/class-instawp-rest-api-manage.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/apis/class-instawp-rest-api-migration.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/apis/class-instawp-rest-api-woocommerce.php';
 
-		require_once INSTAWP_PLUGIN_DIR . '/includes/sync/class-instawp-sync-db.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/sync/class-instawp-sync-helpers.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/sync/class-instawp-sync-parser.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/sync/class-instawp-sync-ajax.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/sync/class-instawp-sync-apis.php';
-		require_once INSTAWP_PLUGIN_DIR . '/includes/sync/class-instawp-sync-customize-setting.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/sync/class-instawp-sync-db.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/sync/class-instawp-sync-helpers.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/sync/class-instawp-sync-parser.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/sync/class-instawp-sync-ajax.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/sync/class-instawp-sync-apis.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/sync/class-instawp-sync-customize-setting.php';
 
-		$files = array( 'option', 'plugin-theme', 'post', 'term', 'menu', 'user', 'customizer', 'wc' );
-		foreach ( $files as $file ) {
-			require_once INSTAWP_PLUGIN_DIR . '/includes/sync/class-instawp-sync-' . $file . '.php';
+		foreach ( array( 'option', 'plugin-theme', 'post', 'term', 'menu', 'user', 'customizer', 'wc' ) as $file ) {
+			require_once INSTAWP_PLUGIN_DIR . 'includes/sync/class-instawp-sync-' . $file . '.php';
 		}
 
-		$setting = Option::get_option( 'instawp_activity_log', 'off' );
-		if ( $setting === 'on' ) {
-			require_once INSTAWP_PLUGIN_DIR . '/includes/activity-log/class-instawp-activity-log.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/class-instawp-cdn-cache-purge.php';
 
-			$files = array( 'posts', 'attachments', 'users', 'menus', 'plugins', 'themes', 'taxonomies', 'widgets' );
-			foreach ( $files as $file ) {
-				require_once INSTAWP_PLUGIN_DIR . '/includes/activity-log/class-instawp-activity-log-' . $file . '.php';
+		require_once INSTAWP_PLUGIN_DIR . 'includes/activity-log/class-instawp-activity-log.php';
+		
+		$this->activity_log_enabled = Option::get_option( 'instawp_activity_log', 'off' ) === 'on';
+
+		if ( $this->activity_log_enabled ) {
+			foreach ( array( 'core', 'posts', 'attachments', 'users', 'menus', 'plugins', 'themes', 'taxonomies', 'widgets' ) as $file ) {
+				require_once INSTAWP_PLUGIN_DIR . 'includes/activity-log/class-instawp-activity-log-' . $file . '.php';
 			}
 		}
 	}
